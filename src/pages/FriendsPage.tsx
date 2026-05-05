@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useScheduleStore } from "@/hooks/useSchedule";
 import { cn } from "@/lib/utils";
+import { CommunityService } from "@/services/CommunityService";
 
 const emailSamples = [
   "23B1NUM2119@stud.num.edu.mn",
@@ -23,6 +24,9 @@ export function FriendsPage() {
   const addFriendByEmail = useScheduleStore((state) => state.addFriendByEmail);
   const setSelectedFriend = useScheduleStore((state) => state.setSelectedFriend);
   const inviteLink = `${window.location.origin}?invite=${encodeURIComponent(currentStudent.id)}&school=${encodeURIComponent(currentStudent.school)}`;
+  const schoolFriends = friends.filter(
+    (friend) => CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school
+  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,6 +66,8 @@ export function FriendsPage() {
         {friendNotice && <div className="mt-2 text-sm text-zinc-500">{friendNotice}</div>}
         <div className="mt-3 text-xs leading-5 text-zinc-500">
           Дэмжих student email format: {emailSamples.join(" · ")}
+          <br />
+          Одоо зөвхөн {currentStudent.school} сургуулийн оюутныг нэмнэ.
         </div>
       </section>
 
@@ -96,7 +102,7 @@ export function FriendsPage() {
 
       <section className="scheduler-scrollbar min-h-0 flex-1 overflow-auto border border-zinc-200 bg-white p-4">
         <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-          {friends.map((friend) => (
+          {schoolFriends.map((friend) => (
             <button
               key={friend.id}
               type="button"
@@ -115,6 +121,11 @@ export function FriendsPage() {
               </div>
             </button>
           ))}
+          {schoolFriends.length === 0 && (
+            <div className="col-span-full border border-zinc-200 bg-zinc-50 px-4 py-8 text-center text-sm text-zinc-500">
+              Энэ сургуулийн найз одоогоор алга.
+            </div>
+          )}
         </div>
       </section>
     </div>

@@ -50,10 +50,13 @@ function CommunityCard({ community }: { community: Community }) {
 
 export function CommunitiesPage() {
   const communities = useScheduleStore((state) => state.communities);
+  const currentStudent = useScheduleStore((state) => state.currentStudent);
+  const communityMembers = useScheduleStore((state) => state.communityMembers);
   const searchQuery = useScheduleStore((state) => state.searchQuery);
   const setSearchQuery = useScheduleStore((state) => state.setSearchQuery);
+  const visibleCommunities = CommunityService.getVisibleCommunities(currentStudent, communities, communityMembers);
   const grouped = CommunityService.groupCommunities(
-    communities
+    visibleCommunities
       .filter((community) => visibleCommunityTypes.includes(community.type))
       .filter((community) => community.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
   );
@@ -65,6 +68,9 @@ export function CommunitiesPage() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Автомат бүлгүүд</div>
             <h1 className="mt-1 text-xl font-semibold text-zinc-950">Бүлгүүд</h1>
+            <p className="mt-2 text-sm text-zinc-500">
+              Зөвхөн {currentStudent.school} сургуулийн таны харьяалагдах бүлгүүд харагдана.
+            </p>
           </div>
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />

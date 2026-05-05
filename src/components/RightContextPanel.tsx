@@ -105,6 +105,7 @@ export function RightContextPanel() {
   const selectedCourseId = useScheduleStore((state) => state.selectedCourseId);
   const selectedCommunity = useSelectedCommunity();
   const selectedFriend = useSelectedFriend();
+  const currentStudent = useScheduleStore((state) => state.currentStudent);
   const students = useScheduleStore((state) => state.students);
   const communityMembers = useScheduleStore((state) => state.communityMembers);
   const courses = useScheduleStore((state) => state.courses);
@@ -153,7 +154,7 @@ export function RightContextPanel() {
         : [];
     const communityPosts = boardPosts.filter((post) => post.community_id === selectedCommunity.id);
     const senderById = new Map(students.map((student) => [student.id, student]));
-    const visibleEvents = schoolEvents.filter((event) => event.school === students[0]?.school || event.school === "MUIS");
+    const visibleEvents = schoolEvents.filter((event) => event.school === currentStudent.school);
     const submitPost = (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       addBoardPost(postDraft);

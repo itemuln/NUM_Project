@@ -3,17 +3,22 @@ import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Button } from "@/components/ui/button";
 import { useScheduleStore, useSelectedFriend } from "@/hooks/useSchedule";
 import { cn } from "@/lib/utils";
+import { CommunityService } from "@/services/CommunityService";
 
 export function Dashboard() {
   const selectedSemester = useScheduleStore((state) => state.selectedSemester);
   const comparisonMode = useScheduleStore((state) => state.comparisonMode);
   const friends = useScheduleStore((state) => state.friends);
+  const currentStudent = useScheduleStore((state) => state.currentStudent);
   const selectedFriendId = useScheduleStore((state) => state.selectedFriendId);
   const setComparisonMode = useScheduleStore((state) => state.setComparisonMode);
   const setSelectedFriend = useScheduleStore((state) => state.setSelectedFriend);
   const openCourseModal = useScheduleStore((state) => state.openCourseModal);
   const setActivePage = useScheduleStore((state) => state.setActivePage);
   const selectedFriend = useSelectedFriend();
+  const schoolFriends = friends.filter(
+    (friend) => CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden sm:gap-4">
@@ -54,8 +59,10 @@ export function Dashboard() {
                 onChange={(event) => setSelectedFriend(event.target.value || null)}
                 className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-950 focus:ring-2 focus:ring-teal-500/20 sm:w-auto"
                 aria-label="Харьцуулах найз"
+                disabled={schoolFriends.length === 0}
               >
-                {friends.map((friend) => (
+                {schoolFriends.length === 0 && <option value="">Ижил сургуулийн найз алга</option>}
+                {schoolFriends.map((friend) => (
                   <option key={friend.id} value={friend.id}>
                     {friend.name}
                   </option>

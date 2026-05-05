@@ -1,7 +1,8 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useScheduleStore } from "@/hooks/useSchedule";
+import { CommunityService } from "@/services/CommunityService";
 
 const yearOptions = ["1-р курс", "2-р курс", "3-р курс", "4-р курс", "Магистр"];
 const emailSamples = [
@@ -20,6 +21,16 @@ export function OnboardingModal() {
   const [program, setProgram] = useState(currentStudent.program);
   const [year, setYear] = useState(currentStudent.year);
   const [classGroup, setClassGroup] = useState(currentStudent.class_group);
+  const detectedSchool = CommunityService.detectSchoolFromEmail(email);
+
+  useEffect(() => {
+    if (isOnboarded) return;
+
+    setEmail(currentStudent.email);
+    setProgram(currentStudent.program);
+    setYear(currentStudent.year);
+    setClassGroup(currentStudent.class_group);
+  }, [currentStudent, isOnboarded]);
 
   if (isOnboarded) return null;
 
@@ -54,6 +65,9 @@ export function OnboardingModal() {
             />
             <div className="mt-2 text-xs leading-5 text-zinc-500">
               Жишээ format: {emailSamples.join(" · ")}
+            </div>
+            <div className="mt-2 rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-500">
+              Танигдсан сургууль: {detectedSchool}
             </div>
           </div>
 
@@ -104,7 +118,7 @@ export function OnboardingModal() {
           </div>
 
           <Button type="submit" className="w-full">
-            Төлөвлөгөөг эхлүүлэх
+            Нэвтрэх
           </Button>
         </form>
       </section>

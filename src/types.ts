@@ -75,6 +75,7 @@ export interface Community {
   name: string;
   type: CommunityType;
   reference_id?: string;
+  school?: string;
   memberCount: number;
 }
 

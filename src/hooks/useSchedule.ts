@@ -70,6 +70,7 @@ interface ScheduleState {
   theme: ThemeMode;
   setComparisonMode: (enabled: boolean) => void;
   completeOnboarding: (input: { email: string; program: string; year: string; classGroup: string }) => void;
+  logOut: () => void;
   setActivePage: (page: AppPage) => void;
   openCourseModal: () => void;
   closeCourseModal: () => void;
@@ -245,6 +246,37 @@ const initialBoardPosts: BoardPost[] = classCommunityId
 
 const rebuildCommunityState = (students: Student[], courses: Course[]) =>
   CommunityService.buildCommunities(students, courses);
+
+const friendBelongsToSchool = (friend: Friend, school: string) =>
+  CommunityService.detectSchoolFromEmail(friend.email) === school;
+
+const getSchoolFriends = (friends: Friend[], school: string) =>
+  friends.filter((friend) => friendBelongsToSchool(friend, school));
+
+const getDefaultCommunityId = (
+  communities: Community[],
+  currentStudent: Student,
+  members: CommunityMember[],
+  preferredCommunityId?: string | null
+) => {
+  if (
+    preferredCommunityId &&
+    CommunityService.canAccessCommunity(preferredCommunityId, currentStudent, communities, members)
+  ) {
+    return preferredCommunityId;
+  }
+
+  const visibleCommunities = CommunityService.getVisibleCommunities(currentStudent, communities, members);
+
+  return (
+    visibleCommunities.find(
+      (community) => community.type === "class" && community.reference_id === currentStudent.class_group
+    )?.id ??
+    visibleCommunities.find((community) => community.type === "school")?.id ??
+    visibleCommunities[0]?.id ??
+    null
+  );
+};
 
 const semesterKey = (course: Course) => `${course.year ?? "2025-2026"} · ${course.semester ?? "Намрын улирал"}`;
 
@@ -464,10 +496,17 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   rightPanelWidth: 320,
   theme: "dark",
   setComparisonMode: (enabled) =>
-    set((state) => ({
-      comparisonMode: enabled,
-      selectedFriendId: enabled ? state.selectedFriendId ?? state.friends[0]?.id ?? null : state.selectedFriendId
-    })),
+    set((state) => {
+      const visibleFriends = getSchoolFriends(state.friends, state.currentStudent.school);
+      const selectedFriendId = visibleFriends.some((friend) => friend.id === state.selectedFriendId)
+        ? state.selectedFriendId
+        : visibleFriends[0]?.id ?? null;
+
+      return {
+        comparisonMode: enabled,
+        selectedFriendId: enabled ? selectedFriendId : state.selectedFriendId
+      };
+    }),
   completeOnboarding: (input) => {
     const normalizedEmail = input.email.trim().toLowerCase();
     const nextStudent = CommunityService.detectStudentIdentity({
@@ -486,6 +525,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         student.id === nextStudent.id ? nextStudent : student
       );
       const assignment = rebuildCommunityState(students, state.courses);
+      const visibleFriends = getSchoolFriends(state.friends, nextStudent.school);
 
       return {
         userEmail: normalizedEmail,
@@ -493,20 +533,55 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         students,
         communities: assignment.communities,
         communityMembers: assignment.members,
+        selectedCommunityId: getDefaultCommunityId(assignment.communities, nextStudent, assignment.members),
+        selectedFriendId:
+          state.selectedFriendId && visibleFriends.some((friend) => friend.id === state.selectedFriendId)
+            ? state.selectedFriendId
+            : null,
+        comparisonMode:
+          state.selectedFriendId && visibleFriends.some((friend) => friend.id === state.selectedFriendId)
+            ? state.comparisonMode
+            : false,
+        rightContext: null,
+        activePage: "dashboard",
         isOnboarded: true
       };
     });
   },
+  logOut: () =>
+    set({
+      isOnboarded: false,
+      activePage: "dashboard",
+      rightContext: null,
+      isCourseModalOpen: false,
+      selectedCourseId: null,
+      selectedFriendId: null,
+      comparisonMode: false,
+      searchQuery: "",
+      courseSearchQuery: "",
+      scheduleNotice: null,
+      friendNotice: null
+    }),
   setActivePage: (page) => set({ activePage: page }),
   openCourseModal: () => set({ isCourseModalOpen: true, scheduleNotice: null }),
   closeCourseModal: () => set({ isCourseModalOpen: false }),
   setRightContext: (context) => set({ rightContext: context }),
   setSelectedFriend: (friendId) =>
-    set({
-      selectedFriendId: friendId,
-      rightContext: friendId ? "friend" : null
+    set((state) => {
+      const friend = state.friends.find((item) => item.id === friendId);
+      const canAccessFriend = Boolean(friend && friendBelongsToSchool(friend, state.currentStudent.school));
+
+      return {
+        selectedFriendId: canAccessFriend ? friendId : null,
+        rightContext: canAccessFriend ? "friend" : null
+      };
     }),
-  setSelectedCommunity: (communityId) => set({ selectedCommunityId: communityId, rightContext: "community" }),
+  setSelectedCommunity: (communityId) =>
+    set((state) =>
+      CommunityService.canAccessCommunity(communityId, state.currentStudent, state.communities, state.communityMembers)
+        ? { selectedCommunityId: communityId, rightContext: "community" }
+        : { rightContext: null }
+    ),
   setSelectedCourse: (courseId) => set({ selectedCourseId: courseId, rightContext: courseId ? "course" : null }),
   setSelectedSemester: (semester) => set({ selectedSemester: semester }),
   setSearchQuery: (query) => set({ searchQuery: query }),
@@ -539,6 +614,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     set((state) => {
       const assignment = rebuildCommunityState(snapshot.students, state.courses);
+      const visibleFriends = getSchoolFriends(snapshot.friends, snapshot.currentStudent.school);
+      const selectedFriendId =
+        snapshot.selectedFriendId && visibleFriends.some((friend) => friend.id === snapshot.selectedFriendId)
+          ? snapshot.selectedFriendId
+          : null;
 
       return {
         ...snapshot,
@@ -557,6 +637,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           : state.rightPanelWidth,
         rightContext: null,
         isCourseModalOpen: false,
+        selectedCommunityId: getDefaultCommunityId(
+          assignment.communities,
+          snapshot.currentStudent,
+          assignment.members,
+          snapshot.selectedCommunityId
+        ),
+        selectedFriendId,
+        comparisonMode: selectedFriendId ? snapshot.comparisonMode : false,
         communities: assignment.communities,
         communityMembers: assignment.members,
         semesterOptions: getSemesterOptions(state.courses),
@@ -785,6 +873,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     const state = get();
     if (!state.selectedCommunityId) return;
+    if (
+      !CommunityService.canAccessCommunity(
+        state.selectedCommunityId,
+        state.currentStudent,
+        state.communities,
+        state.communityMembers
+      )
+    ) {
+      return;
+    }
 
     const message = chatService.sendMessage({
       communityId: state.selectedCommunityId,
@@ -808,6 +906,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     const trimmed = content.trim();
     const state = get();
     if (!trimmed || !state.selectedCommunityId) return;
+    if (
+      !CommunityService.canAccessCommunity(
+        state.selectedCommunityId,
+        state.currentStudent,
+        state.communities,
+        state.communityMembers
+      )
+    ) {
+      return;
+    }
 
     set((currentState) => ({
       boardPosts: [
@@ -878,10 +986,25 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 }));
 
 export const useSelectedFriend = () =>
-  useScheduleStore((state) => state.friends.find((friend) => friend.id === state.selectedFriendId) ?? null);
+  useScheduleStore((state) => {
+    const friend = state.friends.find((item) => item.id === state.selectedFriendId);
+
+    return friend && friendBelongsToSchool(friend, state.currentStudent.school) ? friend : null;
+  });
 
 export const useSelectedCommunity = () =>
-  useScheduleStore((state) => state.communities.find((community) => community.id === state.selectedCommunityId) ?? null);
+  useScheduleStore((state) => {
+    if (!state.selectedCommunityId) return null;
+
+    return CommunityService.canAccessCommunity(
+      state.selectedCommunityId,
+      state.currentStudent,
+      state.communities,
+      state.communityMembers
+    )
+      ? state.communities.find((community) => community.id === state.selectedCommunityId) ?? null
+      : null;
+  });
 
 export const createDatabaseSnapshot = (state: ScheduleState): AppDatabaseSnapshot => ({
   currentStudent: state.currentStudent,

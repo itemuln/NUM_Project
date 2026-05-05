@@ -5,6 +5,7 @@ import {
   ChevronsRight,
   Gift,
   LayoutDashboard,
+  LogOut,
   MessageSquareText,
   Moon,
   Newspaper,
@@ -45,6 +46,7 @@ function useNavigationState() {
   const setSidebarWidth = useScheduleStore((state) => state.setSidebarWidth);
   const toggleSidebar = useScheduleStore((state) => state.toggleSidebar);
   const toggleTheme = useScheduleStore((state) => state.toggleTheme);
+  const logOut = useScheduleStore((state) => state.logOut);
 
   return {
     activePage,
@@ -56,7 +58,8 @@ function useNavigationState() {
     setActivePage,
     setSidebarWidth,
     toggleSidebar,
-    toggleTheme
+    toggleTheme,
+    logOut
   };
 }
 
@@ -71,7 +74,8 @@ export function Sidebar() {
     setActivePage,
     setSidebarWidth,
     toggleSidebar,
-    toggleTheme
+    toggleTheme,
+    logOut
   } = useNavigationState();
   const visualWidth = sidebarCollapsed ? 72 : sidebarWidth;
 
@@ -101,7 +105,7 @@ export function Sidebar() {
       <div className={cn("border-b border-zinc-200 py-5", sidebarCollapsed ? "px-3" : "px-5")}>
         <div className="flex items-start justify-between gap-2">
           <div className={cn("min-w-0", sidebarCollapsed && "sr-only")}>
-            <div className="truncate text-base font-semibold tracking-normal text-zinc-950">МУИС Хуваарь</div>
+            <div className="truncate text-base font-semibold tracking-normal text-zinc-950">University Scheduler</div>
             <div className="mt-1 truncate text-xs text-zinc-500">Ухаалаг төлөвлөлт</div>
           </div>
           <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Sidebar нээх хаах">
@@ -166,12 +170,22 @@ export function Sidebar() {
         <Button
           variant="secondary"
           size={sidebarCollapsed ? "icon" : "md"}
-          className={cn("w-full", !sidebarCollapsed && "justify-start")}
+          className={cn("mb-2 w-full", !sidebarCollapsed && "justify-start")}
           onClick={() => setActivePage("courses")}
           aria-label="Хичээл нэмэх"
         >
           <BookOpen className="h-4 w-4" />
           {!sidebarCollapsed && "Хичээл нэмэх"}
+        </Button>
+        <Button
+          variant="ghost"
+          size={sidebarCollapsed ? "icon" : "md"}
+          className={cn("w-full", !sidebarCollapsed && "justify-start")}
+          onClick={logOut}
+          aria-label="Гарах"
+        >
+          <LogOut className="h-4 w-4" />
+          {!sidebarCollapsed && "Гарах"}
         </Button>
       </div>
 
@@ -188,7 +202,7 @@ export function Sidebar() {
 }
 
 export function MobileTopBar() {
-  const { activePage, currentStudent, userEmail, theme, toggleTheme } = useNavigationState();
+  const { activePage, currentStudent, userEmail, theme, toggleTheme, logOut } = useNavigationState();
   const activeItem = navItems.find((item) => item.page === activePage) ?? navItems[0];
 
   return (
@@ -207,6 +221,9 @@ export function MobileTopBar() {
         </span>
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Theme солих">
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+        <Button variant="ghost" size="icon" onClick={logOut} aria-label="Гарах">
+          <LogOut className="h-4 w-4" />
         </Button>
       </div>
     </header>
