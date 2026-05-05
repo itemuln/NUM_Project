@@ -40,8 +40,8 @@ export function OnboardingModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
-      <section className="w-full max-w-lg border border-zinc-200 bg-white p-5">
+    <div className="scheduler-scrollbar fixed inset-0 z-[60] flex overflow-auto bg-zinc-100 px-4 py-6">
+      <section className="m-auto w-full max-w-lg border border-zinc-200 bg-white p-5">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Эхлэх тохиргоо</div>
           <h1 className="mt-2 text-xl font-semibold text-zinc-950">Төлөвлөгөө гаргах профайл</h1>
