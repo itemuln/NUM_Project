@@ -13,6 +13,7 @@ import {
 } from "@/data/seedData";
 import { ChatService } from "@/services/ChatService";
 import { CommunityService } from "@/services/CommunityService";
+import { ApiService } from "@/services/ApiService";
 import type {
   AppDatabaseSnapshot,
   AppPage,
@@ -326,8 +327,9 @@ const courseHasTimeConflict = (course: Course, schedule: ScheduleItem[]) => {
 };
 
 const findCompanionCourse = (course: Course, courses: Course[], schedule: ScheduleItem[]) => {
-  const targetKind = course.kind === "lecture" ? "seminar" : "lecture";
+  const targetKind = course.kind === "lecture" ? "seminar" : course.kind === "seminar" ? "lecture" : null;
   const courseGroupId = getEnrollmentCourseId(course);
+  if (!targetKind) return null;
 
   const candidates = courses.filter(
     (candidate) =>
@@ -547,6 +549,15 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         isOnboarded: true
       };
     });
+
+    void ApiService.login({
+      email: normalizedEmail,
+      name: "Та",
+      major: input.program.trim() || "Тодорхойгүй хөтөлбөр",
+      classGroup: input.classGroup.trim() || "Тодорхойгүй"
+    }).catch(() => {
+      // IndexedDB/local state remains the offline fallback when the API is not running.
+    });
   },
   logOut: () =>
     set({
@@ -590,8 +601,21 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   loadCourseCatalog: async () => {
     if (get().catalogLoaded) return;
 
-    const response = await fetch("/data/course-catalog.json");
-    const importedCourses = (await response.json()) as Course[];
+    let importedCourses: Course[] | null = null;
+
+    try {
+      const apiCourses = await ApiService.fetchCourses(get().currentStudent.email);
+      if (apiCourses.length > 0) {
+        importedCourses = apiCourses;
+      }
+    } catch {
+      importedCourses = null;
+    }
+
+    if (!importedCourses) {
+      const response = await fetch("/data/course-catalog.json");
+      importedCourses = (await response.json()) as Course[];
+    }
 
     set((state) => {
       const courses = mergeCourses(state.courses, importedCourses);
@@ -704,6 +728,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       communityMembers: assignment.members,
       friendNotice: "Найз амжилттай нэмэгдлээ."
     });
+
+    void ApiService.requestFriend(state.currentStudent.email, normalizedEmail)
+      .then(() => {
+        set({ friendNotice: "Найзын хүсэлт серверт илгээгдлээ." });
+      })
+      .catch(() => {
+        // Local friend fallback stays available while backend accounts are still being created.
+      });
   },
   addCourseFromCatalog: (courseId) => {
     const state = get();
@@ -740,6 +772,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         newItems.length > 1
           ? "Лекц болон семинар хуваарьт хамт нэмэгдлээ."
           : "Хичээл хуваарьт нэмэгдлээ."
+    });
+
+    void ApiService.enroll(state.currentStudent.email, course.sourceScheduleId ?? course.id, true).catch(() => {
+      // The UI keeps the local plan if the shared database is offline.
     });
   },
   removeScheduleItem: (itemId) =>
@@ -793,6 +829,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       communityMembers: assignment.members,
       scheduleNotice: "Хичээл хуваариас хасагдлаа."
     });
+
   },
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setSidebarWidth: (width) => set({ sidebarWidth: clampSidebarWidth(width), sidebarCollapsed: false }),
@@ -901,6 +938,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         ]
       }
     }));
+
+    void ApiService.sendCommunityMessage(state.currentStudent.email, state.selectedCommunityId, trimmedBody).catch(() => {
+      // Local chat remains available when no shared backend is configured.
+    });
   },
   addBoardPost: (content) => {
     const trimmed = content.trim();

@@ -163,7 +163,7 @@ export const CommunityService = {
   groupCommunities(communities: Community[]) {
     return {
       school: communities.filter((community) => community.type === "school"),
-      class: communities.filter((community) => community.type === "class"),
+      class: communities.filter((community) => community.type === "class" || community.type === "major"),
       course: communities.filter((community) => community.type === "course")
     };
   },

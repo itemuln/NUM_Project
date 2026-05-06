@@ -15,7 +15,8 @@ interface CourseCardProps {
 
 const kindLabels = {
   lecture: "Лекц",
-  seminar: "Семинар"
+  seminar: "Семинар",
+  lab: "Лаб"
 };
 
 const dayLabels = new Map(days.map((day) => [day.key, day.label]));

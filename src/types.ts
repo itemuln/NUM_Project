@@ -7,11 +7,11 @@ export type DayKey =
   | "saturday"
   | "sunday";
 
-export type CourseKind = "lecture" | "seminar";
+export type CourseKind = "lecture" | "seminar" | "lab";
 
 export type ScheduleOwner = "me" | "friend";
 
-export type CommunityType = "school" | "class" | "course";
+export type CommunityType = "school" | "class" | "major" | "course";
 
 export type SearchResultType = "course" | "community" | "user";
 

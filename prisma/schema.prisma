@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ScheduleType {
+  lecture
+  seminar
+  lab
+}
+
+enum FriendshipStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum CommunityType {
+  school
+  major
+  course
+}
+
+model University {
+  id          String      @id @default(cuid())
+  name        String
+  domain      String      @unique
+  createdAt   DateTime    @default(now())
+  students    Student[]
+  courses     Course[]
+  communities Community[]
+
+  @@index([domain])
+}
+
+model Student {
+  id                  String            @id @default(cuid())
+  email               String            @unique
+  name                String
+  universityId        String
+  major               String
+  classGroup          String
+  createdAt           DateTime          @default(now())
+  university          University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  enrollments         Enrollment[]
+  sentFriendships     Friendship[]      @relation("FriendshipRequester")
+  receivedFriendships Friendship[]      @relation("FriendshipReceiver")
+  communityMembers    CommunityMember[]
+  messages            Message[]
+
+  @@index([universityId])
+  @@index([classGroup])
+}
+
+model Course {
+  id           String       @id @default(cuid())
+  code         String
+  name         String
+  teacherName  String
+  credit       Int
+  universityId String
+  semester     String
+  year         String
+  university   University   @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  schedules    Schedule[]
+  enrollments  Enrollment[]
+
+  @@index([universityId])
+  @@index([code])
+  @@index([name])
+  @@index([teacherName])
+}
+
+model Schedule {
+  id          String       @id @default(cuid())
+  courseId    String
+  day         String
+  startTime   String
+  endTime     String
+  type        ScheduleType
+  room        String
+  building    String
+  semester    String
+  year        String
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+
+  @@unique([courseId, day, startTime, endTime, type, room, semester, year])
+  @@index([day])
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  studentId  String
+  courseId   String
+  scheduleId String
+  createdAt  DateTime @default(now())
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, scheduleId])
+  @@index([studentId])
+  @@index([courseId])
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  receiverId  String
+  status      FriendshipStatus @default(pending)
+  createdAt   DateTime         @default(now())
+  requester   Student          @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver    Student          @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, receiverId])
+  @@index([receiverId])
+}
+
+model Community {
+  id          String            @id @default(cuid())
+  name        String
+  type        CommunityType
+  universityId String
+  referenceId String
+  createdAt   DateTime          @default(now())
+  university   University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  members      CommunityMember[]
+  messages     Message[]
+
+  @@unique([universityId, type, referenceId])
+  @@index([universityId])
+}
+
+model CommunityMember {
+  id          String    @id @default(cuid())
+  communityId String
+  studentId   String
+  createdAt   DateTime  @default(now())
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, studentId])
+  @@index([studentId])
+}
+
+model Message {
+  id          String    @id @default(cuid())
+  communityId String
+  senderId    String
+  content     String
+  createdAt   DateTime  @default(now())
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  sender      Student   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+}
+
+model TeacherRating {
+  id          String @id @default(cuid())
+  teacherName String
+  rating      Float
+  reviewCount Int
+  source      String
+
+  @@unique([teacherName, source])
+  @@index([teacherName])
+}

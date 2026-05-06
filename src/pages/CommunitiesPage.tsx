@@ -8,16 +8,19 @@ import type { Community, CommunityType } from "@/types";
 const typeLabels = {
   school: "Сургуулийн бүлэг",
   class: "Анги / хөтөлбөр",
+  major: "Мэргэжил / анги",
   course: "Хичээл"
-};
+} satisfies Record<CommunityType, string>;
 
 const typeIcons = {
   school: School,
   class: GraduationCap,
+  major: GraduationCap,
   course: BookOpen
-};
+} satisfies Record<CommunityType, typeof School>;
 
-const visibleCommunityTypes: CommunityType[] = ["school", "class"];
+const visibleCommunityTypes = ["school", "class"] as const;
+const isVisibleCommunityType = (type: CommunityType) => type === "school" || type === "class" || type === "major";
 
 function CommunityCard({ community }: { community: Community }) {
   const selectedCommunityId = useScheduleStore((state) => state.selectedCommunityId);
@@ -57,7 +60,7 @@ export function CommunitiesPage() {
   const visibleCommunities = CommunityService.getVisibleCommunities(currentStudent, communities, communityMembers);
   const grouped = CommunityService.groupCommunities(
     visibleCommunities
-      .filter((community) => visibleCommunityTypes.includes(community.type))
+      .filter((community) => isVisibleCommunityType(community.type))
       .filter((community) => community.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
   );
 

@@ -16,7 +16,8 @@ interface ScheduleBlockProps {
 
 const kindLabels = {
   lecture: "Лекц",
-  seminar: "Семинар"
+  seminar: "Семинар",
+  lab: "Лаб"
 };
 
 export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockProps) {
@@ -79,6 +80,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
           item.kind === "lecture" &&
           "z-20 border-zinc-950 bg-zinc-950 text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)]",
         owner === "me" && item.kind === "seminar" && "z-20 border-teal-700 bg-teal-700 text-white shadow-[0_8px_24px_rgba(0,0,0,0.20)]",
+        owner === "me" && item.kind === "lab" && "z-20 border-indigo-700 bg-indigo-700 text-white shadow-[0_8px_24px_rgba(0,0,0,0.20)]",
         owner === "friend" &&
           "pointer-events-none z-10 border-dashed border-indigo-400 bg-indigo-500/15 text-indigo-950 backdrop-blur-[1px]",
         conflict && owner === "me" && "border-red-400 ring-2 ring-red-500/50",

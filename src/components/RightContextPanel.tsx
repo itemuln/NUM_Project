@@ -15,12 +15,14 @@ import type { Course, ScheduleItem } from "@/types";
 const communityTypeLabels = {
   school: "сургууль",
   class: "анги",
+  major: "мэргэжил",
   course: "хичээл"
 };
 
 const kindLabels = {
   lecture: "Лекц",
-  seminar: "Семинар"
+  seminar: "Семинар",
+  lab: "Лаб"
 };
 
 function dayLabel(dayKey: ScheduleItem["day"]) {
