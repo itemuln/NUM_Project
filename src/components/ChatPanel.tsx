@@ -17,6 +17,7 @@ function formatMessageTime(value: string) {
 export function ChatPanel() {
   const [draft, setDraft] = useState("");
   const selectedCommunityId = useScheduleStore((state) => state.selectedCommunityId);
+  const currentStudent = useScheduleStore((state) => state.currentStudent);
   const communityMessages = useScheduleStore((state) => state.communityMessages);
   const students = useScheduleStore((state) => state.students);
   const sendCommunityMessage = useScheduleStore((state) => state.sendCommunityMessage);
@@ -35,7 +36,7 @@ export function ChatPanel() {
         <div className="space-y-3 p-4">
           {messages.map((message) => {
             const sender = senderById.get(message.sender_id);
-            const isOwn = sender?.id === "student-current";
+            const isOwn = message.sender_id === currentStudent.id;
 
             return (
               <div key={message.id} className={cn("flex", isOwn ? "justify-end" : "justify-start")}>

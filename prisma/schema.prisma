@@ -36,10 +36,10 @@ enum AuthProvider {
 }
 
 model University {
-  id          String      @id @default(cuid())
+  id          String         @id @default(cuid())
   name        String
-  domain      String      @unique
-  createdAt   DateTime    @default(now())
+  domain      String         @unique
+  createdAt   DateTime       @default(now())
   students    Student[]
   courses     Course[]
   terms       AcademicTerm[]
@@ -62,8 +62,9 @@ model Student {
   receivedFriendships Friendship[]      @relation("FriendshipReceiver")
   communityMembers    CommunityMember[]
   messages            Message[]
-  authAccounts         AuthAccount[]
-  timetables           Timetable[]
+  authAccounts        AuthAccount[]
+  timetables          Timetable[]
+  courseReviews       CourseReview[]
 
   @@index([universityId])
   @@index([classGroup])
@@ -102,7 +103,7 @@ model AcademicTerm {
 }
 
 model Course {
-  id           String       @id @default(cuid())
+  id           String         @id @default(cuid())
   code         String
   name         String
   teacherName  String
@@ -111,10 +112,11 @@ model Course {
   termId       String
   semester     String
   year         String
-  university   University   @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  term         AcademicTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  university   University     @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  term         AcademicTerm   @relation(fields: [termId], references: [id], onDelete: Cascade)
   schedules    Schedule[]
   enrollments  Enrollment[]
+  reviews      CourseReview[]
 
   @@index([universityId])
   @@index([termId])
@@ -164,16 +166,16 @@ model Timetable {
 }
 
 model Enrollment {
-  id         String   @id @default(cuid())
-  studentId  String
+  id          String    @id @default(cuid())
+  studentId   String
   timetableId String
-  courseId   String
-  scheduleId String
-  createdAt  DateTime @default(now())
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  timetable  Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
-  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  courseId    String
+  scheduleId  String
+  createdAt   DateTime  @default(now())
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  timetable   Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  schedule    Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, scheduleId])
   @@unique([timetableId, scheduleId])
@@ -196,12 +198,12 @@ model Friendship {
 }
 
 model Community {
-  id          String            @id @default(cuid())
-  name        String
-  type        CommunityType
+  id           String            @id @default(cuid())
+  name         String
+  type         CommunityType
   universityId String
-  referenceId String
-  createdAt   DateTime          @default(now())
+  referenceId  String
+  createdAt    DateTime          @default(now())
   university   University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
   members      CommunityMember[]
   messages     Message[]
@@ -243,4 +245,18 @@ model TeacherRating {
 
   @@unique([teacherName, source])
   @@index([teacherName])
+}
+
+model CourseReview {
+  id        String   @id @default(cuid())
+  courseId  String
+  studentId String?
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([courseId, createdAt])
+  @@index([studentId])
 }

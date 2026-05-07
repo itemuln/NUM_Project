@@ -13,7 +13,7 @@ import {
 } from "@/data/seedData";
 import { ChatService } from "@/services/ChatService";
 import { CommunityService } from "@/services/CommunityService";
-import { ApiService } from "@/services/ApiService";
+import { ApiRequestError, ApiService } from "@/services/ApiService";
 import type {
   AppDatabaseSnapshot,
   AppPage,
@@ -23,6 +23,7 @@ import type {
   CommunityChatMessage,
   CommunityMember,
   Course,
+  CourseReview,
   DayKey,
   Friend,
   Group,
@@ -57,10 +58,13 @@ interface ScheduleState {
   semesterOptions: string[];
   catalogLoaded: boolean;
   databaseReady: boolean;
+  authNotice: string | null;
   scheduleNotice: string | null;
   friendNotice: string | null;
   selectedCommunityId: string | null;
   communityMessages: Record<string, CommunityChatMessage[]>;
+  courseReviews: Record<string, CourseReview[]>;
+  courseReviewsLoaded: Record<string, boolean>;
   searchQuery: string;
   courseSearchQuery: string;
   selectedFriendId: string | null;
@@ -77,7 +81,7 @@ interface ScheduleState {
     classGroup: string;
     password?: string;
     provider?: "password" | "google" | "microsoft";
-  }) => void;
+  }) => Promise<void>;
   logOut: () => void;
   setActivePage: (page: AppPage) => void;
   openCourseModal: () => void;
@@ -92,7 +96,9 @@ interface ScheduleState {
   clearNotices: () => void;
   loadCourseCatalog: () => Promise<void>;
   hydrateFromDatabase: (snapshot: AppDatabaseSnapshot | null) => void;
+  loadFriendsFromApi: () => Promise<void>;
   addFriendByEmail: (email: string) => void;
+  acceptFriendRequest: (friendshipId: string) => void;
   addCourseFromCatalog: (courseId: string) => void;
   removeScheduleItem: (itemId: string) => void;
   removeCourseFromSchedule: (courseId: string) => void;
@@ -104,6 +110,8 @@ interface ScheduleState {
   moveScheduleItem: (itemId: string, day: DayKey, startMinutes: number) => void;
   resizeScheduleItem: (itemId: string, endMinutes: number) => void;
   sendCommunityMessage: (body: string) => void;
+  loadCourseReviews: (courseId: string) => Promise<void>;
+  addCourseReview: (courseId: string, rating: number, comment: string) => void;
   addBoardPost: (content: string) => void;
   addMarketplaceItem: (input: {
     title: string;
@@ -209,6 +217,27 @@ const initialCommunityMessages: CommunityChatMessage[] = [
 
 const chatService = new ChatService(initialCommunityMessages);
 
+const initialCourseReviews: Record<string, CourseReview[]> = {
+  "course-pr-theory": [
+    {
+      id: "review-pr-theory-1",
+      course_id: "course-pr-theory",
+      rating: 5,
+      comment: "Лекц ойлгомжтой, семинар дээр кейс их ажилладаг.",
+      created_at: "2026-05-05T08:44:00.000Z"
+    }
+  ],
+  "course-policy-analysis": [
+    {
+      id: "review-policy-analysis-1",
+      course_id: "course-policy-analysis",
+      rating: 4,
+      comment: "Унших материал ихтэй ч хуваарь төлөвлөхөд тохиромжтой.",
+      created_at: "2026-05-05T08:46:00.000Z"
+    }
+  ]
+};
+
 const initialSchoolEvents: SchoolEvent[] = [
   {
     id: "event-registration",
@@ -261,6 +290,9 @@ const friendBelongsToSchool = (friend: Friend, school: string) =>
 const getSchoolFriends = (friends: Friend[], school: string) =>
   friends.filter((friend) => friendBelongsToSchool(friend, school));
 
+const getAcceptedSchoolFriends = (friends: Friend[], school: string) =>
+  getSchoolFriends(friends, school).filter((friend) => (friend.status ?? "accepted") === "accepted");
+
 const getDefaultCommunityId = (
   communities: Community[],
   currentStudent: Student,
@@ -288,6 +320,8 @@ const getDefaultCommunityId = (
 
 const semesterKey = (course: Course) => `${course.year ?? "2025-2026"} · ${course.semester ?? "Намрын улирал"}`;
 
+const scheduleSemesterKey = (item: ScheduleItem) => `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
+
 const defaultSemester = "2025-2026 · Намрын улирал";
 
 const getSemesterOptions = (courses: Course[]) =>
@@ -307,6 +341,8 @@ const isSchedulableCourse = (course: Course) =>
 
 const hasScheduledClass = (schedule: ScheduleItem[], course: Course) =>
   schedule.some((item) => {
+    if (scheduleSemesterKey(item) !== semesterKey(course)) return false;
+
     if (getScheduleEnrollmentCourseId(item) === getEnrollmentCourseId(course) && item.kind === course.kind) {
       return true;
     }
@@ -332,6 +368,7 @@ const courseHasTimeConflict = (course: Course, schedule: ScheduleItem[]) => {
 
   return schedule.some(
     (item) =>
+      scheduleSemesterKey(item) === semesterKey(course) &&
       item.day === course.day &&
       course.startMinutes! < item.endMinutes &&
       item.startMinutes < course.endMinutes!
@@ -423,6 +460,8 @@ const createFriendFromStudent = (student: Student, schedule: ScheduleItem[] = []
 
 const createPostId = () => createScheduleId("board-post");
 
+const createCourseReviewId = () => createScheduleId("course-review");
+
 const createMarketplaceId = () => createScheduleId("market");
 
 const createBuyRequestId = () => createScheduleId("buy-request");
@@ -499,10 +538,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   semesterOptions: getSemesterOptions(seedCourses),
   catalogLoaded: false,
   databaseReady: false,
+  authNotice: null,
   scheduleNotice: null,
   friendNotice: null,
   selectedCommunityId: initialSelectedCommunityId,
   communityMessages: chatService.getAllMessages(),
+  courseReviews: initialCourseReviews,
+  courseReviewsLoaded: {},
   searchQuery: "",
   courseSearchQuery: "",
   selectedFriendId: seedFriends[0]?.id ?? null,
@@ -513,7 +555,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   theme: "dark",
   setComparisonMode: (enabled) =>
     set((state) => {
-      const visibleFriends = getSchoolFriends(state.friends, state.currentStudent.school);
+      const visibleFriends = getAcceptedSchoolFriends(state.friends, state.currentStudent.school);
       const selectedFriendId = visibleFriends.some((friend) => friend.id === state.selectedFriendId)
         ? state.selectedFriendId
         : visibleFriends[0]?.id ?? null;
@@ -523,30 +565,32 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         selectedFriendId: enabled ? selectedFriendId : state.selectedFriendId
       };
     }),
-  completeOnboarding: (input) => {
+  completeOnboarding: async (input) => {
     const normalizedEmail = input.email.trim().toLowerCase();
-    const nextStudent = CommunityService.detectStudentIdentity({
-      id: "student-current",
-      email: normalizedEmail,
-      name: "Та",
-      program: input.program.trim() || "Тодорхойгүй хөтөлбөр",
-      year: input.year,
-      classGroup: input.classGroup.trim() || "Тодорхойгүй",
-      enrolledCourseIds: get().currentUserSchedule.map((item) => item.communityCourseId ?? item.courseId),
-      isOnline: true
-    });
+    const program = input.program.trim() || "Тодорхойгүй хөтөлбөр";
+    const classGroup = input.classGroup.trim() || "Тодорхойгүй";
 
-    set((state) => {
-      const students = state.students.map((student) =>
-        student.id === nextStudent.id ? nextStudent : student
-      );
+    const applyStudentSession = (nextStudent: Student, apiSemesterOptions: string[] = [], apiFriends?: Friend[]) => {
+      set((state) => {
+        const students = state.students.some((student) => student.id === nextStudent.id)
+          ? state.students.map((student) => (student.id === nextStudent.id ? nextStudent : student))
+          : [
+              nextStudent,
+              ...state.students.filter(
+                (student) =>
+                  student.email.toLowerCase() !== nextStudent.email.toLowerCase() &&
+                  student.id !== "student-current"
+              )
+            ];
+        const friends = apiFriends ?? state.friends;
       const assignment = rebuildCommunityState(students, state.courses);
-      const visibleFriends = getSchoolFriends(state.friends, nextStudent.school);
+        const visibleFriends = getAcceptedSchoolFriends(friends, nextStudent.school);
 
       return {
         userEmail: normalizedEmail,
         currentStudent: nextStudent,
         students,
+          friends,
         communities: assignment.communities,
         communityMembers: assignment.members,
         selectedCommunityId: getDefaultCommunityId(assignment.communities, nextStudent, assignment.members),
@@ -560,36 +604,64 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
             : false,
         rightContext: null,
         activePage: "dashboard",
-        isOnboarded: true
+          isOnboarded: true,
+          authNotice: null,
+          semesterOptions: mergeSemesterOptions(
+            getSemesterOptions(state.courses),
+            state.semesterOptions,
+            apiSemesterOptions
+          )
       };
-    });
-
-    void ApiService.login({
-      email: normalizedEmail,
-      name: "Та",
-      major: input.program.trim() || "Тодорхойгүй хөтөлбөр",
-      classGroup: input.classGroup.trim() || "Тодорхойгүй",
-      password: input.password,
-      provider: input.provider ?? "password"
-    })
-      .then((response) => {
-        const apiSemesterOptions = response.terms?.map((term) => term.label) ?? [];
-        if (apiSemesterOptions.length === 0) return;
-
-        set((state) => {
-          const semesterOptions = mergeSemesterOptions(getSemesterOptions(state.courses), apiSemesterOptions);
-
-          return {
-            semesterOptions,
-            selectedSemester: semesterOptions.includes(state.selectedSemester)
-              ? state.selectedSemester
-              : semesterOptions[0] ?? state.selectedSemester
-          };
-        });
-      })
-      .catch(() => {
-        // IndexedDB/local state remains the offline fallback when the API is not running.
       });
+    };
+
+    try {
+      const response = await ApiService.login({
+        email: normalizedEmail,
+        name: "Та",
+        major: program,
+        classGroup,
+        password: input.password,
+        provider: input.provider ?? "password"
+      });
+      const backendStudent = response.student;
+      const nextStudent = CommunityService.detectStudentIdentity({
+        id: backendStudent?.id ?? "student-current",
+        email: backendStudent?.email ?? normalizedEmail,
+        name: backendStudent?.name ?? "Та",
+        program: backendStudent?.major ?? program,
+        year: input.year,
+        classGroup: backendStudent?.classGroup ?? classGroup,
+        enrolledCourseIds: get().currentUserSchedule.map((item) => item.communityCourseId ?? item.courseId),
+        isOnline: true
+      });
+      const apiSemesterOptions = response.terms?.map((term) => term.label) ?? [];
+      const apiFriends = await ApiService.fetchFriends(normalizedEmail).catch(() => undefined);
+
+      applyStudentSession(nextStudent, apiSemesterOptions, apiFriends);
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status < 500) {
+        set({
+          authNotice: error.message || "Нэвтрэх мэдээлэл буруу байна.",
+          isOnboarded: false
+        });
+        throw error;
+      }
+
+      const fallbackStudent = CommunityService.detectStudentIdentity({
+        id: "student-current",
+        email: normalizedEmail,
+        name: "Та",
+        program,
+        year: input.year,
+        classGroup,
+        enrolledCourseIds: get().currentUserSchedule.map((item) => item.communityCourseId ?? item.courseId),
+        isOnline: true
+      });
+
+      applyStudentSession(fallbackStudent);
+      set({ authNotice: "Сервер түр холбогдсонгүй. Offline төлөвлөгөөний горимоор нэвтэрлээ." });
+    }
   },
   logOut: () =>
     set({
@@ -602,6 +674,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       comparisonMode: false,
       searchQuery: "",
       courseSearchQuery: "",
+      authNotice: null,
       scheduleNotice: null,
       friendNotice: null
     }),
@@ -612,7 +685,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   setSelectedFriend: (friendId) =>
     set((state) => {
       const friend = state.friends.find((item) => item.id === friendId);
-      const canAccessFriend = Boolean(friend && friendBelongsToSchool(friend, state.currentStudent.school));
+      const canAccessFriend = Boolean(
+        friend &&
+          friendBelongsToSchool(friend, state.currentStudent.school) &&
+          (friend.status ?? "accepted") === "accepted"
+      );
 
       return {
         selectedFriendId: canAccessFriend ? friendId : null,
@@ -677,7 +754,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     set((state) => {
       const assignment = rebuildCommunityState(snapshot.students, state.courses);
-      const visibleFriends = getSchoolFriends(snapshot.friends, snapshot.currentStudent.school);
+      const visibleFriends = getAcceptedSchoolFriends(snapshot.friends, snapshot.currentStudent.school);
       const selectedFriendId =
         snapshot.selectedFriendId && visibleFriends.some((friend) => friend.id === snapshot.selectedFriendId)
           ? snapshot.selectedFriendId
@@ -690,6 +767,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         selectedCourseId: snapshot.selectedCourseId ?? null,
         isOnboarded: snapshot.isOnboarded ?? false,
         boardPosts: snapshot.boardPosts ?? state.boardPosts,
+        courseReviews: snapshot.courseReviews ?? state.courseReviews,
+        courseReviewsLoaded: state.courseReviewsLoaded,
         marketplaceItems: snapshot.marketplaceItems ?? state.marketplaceItems,
         buyRequests: snapshot.buyRequests ?? state.buyRequests,
         theme: snapshot.theme ?? state.theme,
@@ -718,6 +797,22 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         databaseReady: true
       };
     });
+  },
+  loadFriendsFromApi: async () => {
+    const state = get();
+
+    try {
+      const friends = await ApiService.fetchFriends(state.currentStudent.email);
+      set((currentState) => ({
+        friends,
+        selectedFriendId:
+          currentState.selectedFriendId && friends.some((friend) => friend.id === currentState.selectedFriendId)
+            ? currentState.selectedFriendId
+            : friends.find((friend) => friend.status === "accepted")?.id ?? null
+      }));
+    } catch {
+      // Local friends remain visible when the API is unavailable.
+    }
   },
   addFriendByEmail: (email) => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -773,11 +868,26 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     });
 
     void ApiService.requestFriend(state.currentStudent.email, normalizedEmail)
-      .then(() => {
-        set({ friendNotice: "Найзын хүсэлт серверт илгээгдлээ." });
+      .then(async () => {
+        const friends = await ApiService.fetchFriends(state.currentStudent.email).catch(() => get().friends);
+        set({ friends, friendNotice: "Найзын хүсэлт серверт илгээгдлээ." });
       })
       .catch(() => {
         // Local friend fallback stays available while backend accounts are still being created.
+      });
+  },
+  acceptFriendRequest: (friendshipId) => {
+    const state = get();
+
+    void ApiService.acceptFriend(state.currentStudent.email, friendshipId)
+      .then(async () => {
+        const friends = await ApiService.fetchFriends(state.currentStudent.email).catch(() => get().friends);
+        set({ friends, friendNotice: "Найзын хүсэлтийг зөвшөөрлөө." });
+      })
+      .catch((error) => {
+        set({
+          friendNotice: error instanceof Error ? error.message : "Найзын хүсэлт зөвшөөрөхөд алдаа гарлаа."
+        });
       });
   },
   addCourseFromCatalog: (courseId) => {
@@ -986,6 +1096,71 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // Local chat remains available when no shared backend is configured.
     });
   },
+  loadCourseReviews: async (courseId) => {
+    const state = get();
+    if (state.courseReviewsLoaded[courseId]) return;
+
+    try {
+      const reviews = await ApiService.fetchCourseReviews(courseId);
+      set((currentState) => ({
+        courseReviews: {
+          ...currentState.courseReviews,
+          [courseId]: reviews
+        },
+        courseReviewsLoaded: {
+          ...currentState.courseReviewsLoaded,
+          [courseId]: true
+        }
+      }));
+    } catch {
+      set((currentState) => ({
+        courseReviewsLoaded: {
+          ...currentState.courseReviewsLoaded,
+          [courseId]: true
+        }
+      }));
+    }
+  },
+  addCourseReview: (courseId, rating, comment) => {
+    const trimmed = comment.trim();
+    const boundedRating = clamp(Math.round(rating), 1, 5);
+    if (!trimmed) return;
+
+    const state = get();
+    const localReview: CourseReview = {
+      id: createCourseReviewId(),
+      course_id: courseId,
+      rating: boundedRating,
+      comment: trimmed,
+      created_at: new Date().toISOString()
+    };
+
+    set((currentState) => ({
+      courseReviews: {
+        ...currentState.courseReviews,
+        [courseId]: [localReview, ...(currentState.courseReviews[courseId] ?? [])]
+      },
+      courseReviewsLoaded: {
+        ...currentState.courseReviewsLoaded,
+        [courseId]: true
+      }
+    }));
+
+    void ApiService.submitCourseReview(state.currentStudent.email, courseId, boundedRating, trimmed)
+      .then((review) => {
+        set((currentState) => ({
+          courseReviews: {
+            ...currentState.courseReviews,
+            [courseId]: (currentState.courseReviews[courseId] ?? []).map((item) =>
+              item.id === localReview.id ? review : item
+            )
+          }
+        }));
+      })
+      .catch(() => {
+        // Anonymous course review remains available locally when the API is offline.
+      });
+  },
   addBoardPost: (content) => {
     const trimmed = content.trim();
     const state = get();
@@ -1099,6 +1274,7 @@ export const createDatabaseSnapshot = (state: ScheduleState): AppDatabaseSnapsho
   selectedCommunityId: state.selectedCommunityId,
   comparisonMode: state.comparisonMode,
   communityMessages: state.communityMessages,
+  courseReviews: state.courseReviews,
   selectedSemester: state.selectedSemester,
   activePage: state.activePage,
   selectedCourseId: state.selectedCourseId,

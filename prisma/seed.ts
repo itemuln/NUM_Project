@@ -391,6 +391,40 @@ async function seedMessages(studentIds: { main: string; anu: string; temuulen: s
   }
 }
 
+async function seedCourseReviews(studentIds: { main: string; anu: string; temuulen: string }) {
+  const courses = await prisma.course.findMany({
+    where: {
+      OR: [{ code: "POLI315" }, { code: { contains: "PR" } }]
+    },
+    take: 4
+  });
+
+  await Promise.all(
+    courses.map((course, index) =>
+      prisma.courseReview.upsert({
+        where: { id: `seed-course-review-${course.id}` },
+        update: {
+          rating: index % 2 === 0 ? 5 : 4,
+          comment:
+            index % 2 === 0
+              ? "Хуваарь төлөвлөхөд тохиромжтой, ачаалал нь ойлгомжтой байсан."
+              : "Семинар дээр идэвхтэй оролцвол оноо авах боломж сайн."
+        },
+        create: {
+          id: `seed-course-review-${course.id}`,
+          courseId: course.id,
+          studentId: null,
+          rating: index % 2 === 0 ? 5 : 4,
+          comment:
+            index % 2 === 0
+              ? "Хуваарь төлөвлөхөд тохиромжтой, ачаалал нь ойлгомжтой байсан."
+              : "Семинар дээр идэвхтэй оролцвол оноо авах боломж сайн."
+        }
+      })
+    )
+  );
+}
+
 async function main() {
   const muis = await seedUniversities();
   await ensureAcademicTerms(muis.id);
@@ -400,6 +434,7 @@ async function main() {
   await enrollSeedSchedules(studentIds);
   await seedFriendships(studentIds);
   await seedMessages(studentIds);
+  await seedCourseReviews(studentIds);
 }
 
 main()

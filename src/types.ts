@@ -103,6 +103,9 @@ export interface ScheduleItem {
 export interface Friend {
   id: string;
   studentId?: string;
+  friendshipId?: string;
+  status?: "pending" | "accepted" | "rejected";
+  direction?: "incoming" | "outgoing";
   name: string;
   email: string;
   group: string;
@@ -128,6 +131,14 @@ export interface CommunityChatMessage {
   sender_id: string;
   community_id: string;
   content: string;
+  created_at: string;
+}
+
+export interface CourseReview {
+  id: string;
+  course_id: string;
+  rating: number;
+  comment: string;
   created_at: string;
 }
 
@@ -205,6 +216,7 @@ export interface AppDatabaseSnapshot {
   selectedCommunityId: string | null;
   comparisonMode: boolean;
   communityMessages: Record<string, CommunityChatMessage[]>;
+  courseReviews?: Record<string, CourseReview[]>;
   selectedSemester: string;
   activePage?: AppPage;
   selectedCourseId?: string | null;

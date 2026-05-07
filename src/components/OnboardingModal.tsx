@@ -16,6 +16,7 @@ const emailSamples = [
 export function OnboardingModal() {
   const isOnboarded = useScheduleStore((state) => state.isOnboarded);
   const currentStudent = useScheduleStore((state) => state.currentStudent);
+  const authNotice = useScheduleStore((state) => state.authNotice);
   const completeOnboarding = useScheduleStore((state) => state.completeOnboarding);
   const [email, setEmail] = useState(currentStudent.email);
   const [program, setProgram] = useState(currentStudent.program);
@@ -23,6 +24,7 @@ export function OnboardingModal() {
   const [classGroup, setClassGroup] = useState(currentStudent.class_group);
   const [password, setPassword] = useState("");
   const [provider, setProvider] = useState<"password" | "google" | "microsoft">("password");
+  const [submitting, setSubmitting] = useState(false);
   const detectedSchool = CommunityService.detectSchoolFromEmail(email);
 
   useEffect(() => {
@@ -38,9 +40,16 @@ export function OnboardingModal() {
 
   if (isOnboarded) return null;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    completeOnboarding({ email, program, year, classGroup, password, provider });
+    setSubmitting(true);
+    try {
+      await completeOnboarding({ email, program, year, classGroup, password, provider });
+    } catch {
+      // Store owns the localized error message.
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -115,8 +124,8 @@ export function OnboardingModal() {
 
           {provider !== "password" && (
             <div className="rounded-sm border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
-              OAuth холболт дараагийн шатанд жинхэнэ Gmail/Teams authorize болно. Одоогоор сонгосон provider-ээр
-              сургуулийн имэйл дээр үндэслэн профайл үүсгэнэ.
+              Энэ сонголт нь тухайн Gmail/Teams provider дээр account үүсгэнэ. Жинхэнэ OAuth redirect холболтыг дараагийн
+              шатанд Google/Microsoft client ID тохируулсны дараа асаана.
             </div>
           )}
 
@@ -166,8 +175,14 @@ export function OnboardingModal() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full">
-            Нэвтрэх
+          {authNotice && (
+            <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+              {authNotice}
+            </div>
+          )}
+
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting ? "Нэвтэрч байна..." : "Нэвтрэх"}
           </Button>
         </form>
       </section>

@@ -88,6 +88,22 @@ function formatEnrollment(enrollment: Awaited<ReturnType<typeof getStudentSchedu
   };
 }
 
+function formatCourseReview(review: {
+  id: string;
+  courseId: string;
+  rating: number;
+  comment: string;
+  createdAt: Date;
+}) {
+  return {
+    id: review.id,
+    courseId: review.courseId,
+    rating: review.rating,
+    comment: review.comment,
+    createdAt: review.createdAt.toISOString()
+  };
+}
+
 function parseProvider(value: unknown) {
   if (value === "google") return AuthProvider.google;
   if (value === "microsoft" || value === "teams") return AuthProvider.microsoft;
@@ -354,6 +370,61 @@ router.get(
 
     if (!course) throw new ApiError(404, "Хичээл олдсонгүй.");
     response.json({ course });
+  })
+);
+
+router.get(
+  "/courses/:id/reviews",
+  asyncHandler(async (request, response) => {
+    const course = await prisma.course.findUnique({
+      where: { id: routeParam(request, "id") }
+    });
+
+    if (!course) throw new ApiError(404, "Хичээл олдсонгүй.");
+
+    const reviews = await prisma.courseReview.findMany({
+      where: { courseId: course.id },
+      orderBy: { createdAt: "desc" },
+      take: 30
+    });
+
+    response.json({ reviews: reviews.map(formatCourseReview) });
+  })
+);
+
+router.post(
+  "/courses/:id/reviews",
+  asyncHandler(async (request, response) => {
+    const student = await requireStudent(request);
+    const course = await prisma.course.findUnique({
+      where: { id: routeParam(request, "id") }
+    });
+
+    if (!course) throw new ApiError(404, "Хичээл олдсонгүй.");
+    if (course.universityId !== student.universityId) {
+      throw new ApiError(403, "Өөр сургуулийн хичээлд review үлдээх боломжгүй.");
+    }
+
+    const rating = Number(request.body.rating);
+    const comment = String(request.body.comment ?? "").trim();
+
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new ApiError(400, "Үнэлгээ 1-5 хооронд байх ёстой.");
+    }
+    if (!comment) {
+      throw new ApiError(400, "Сэтгэгдэл хоосон байна.");
+    }
+
+    const review = await prisma.courseReview.create({
+      data: {
+        courseId: course.id,
+        studentId: null,
+        rating,
+        comment
+      }
+    });
+
+    response.status(201).json({ review: formatCourseReview(review) });
   })
 );
 

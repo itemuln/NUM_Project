@@ -1,4 +1,4 @@
-import type { Course, CourseKind, DayKey } from "@/types";
+import type { Course, CourseKind, CourseReview, DayKey, Friend } from "@/types";
 
 interface ApiLoginInput {
   email: string;
@@ -18,7 +18,25 @@ interface ApiTerm {
 }
 
 interface ApiLoginResponse {
+  student?: ApiStudent;
   terms?: ApiTerm[];
+}
+
+interface ApiStudent {
+  id: string;
+  email: string;
+  name: string;
+  major: string;
+  classGroup: string;
+}
+
+interface ApiFriendship {
+  id: string;
+  status: "pending" | "accepted" | "rejected";
+  requesterId: string;
+  receiverId: string;
+  requester: ApiStudent;
+  receiver: ApiStudent;
 }
 
 interface ApiTeacherRating {
@@ -26,6 +44,14 @@ interface ApiTeacherRating {
   rating: number;
   reviewCount: number;
   source: string;
+}
+
+interface ApiCourseReview {
+  id: string;
+  courseId: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
 }
 
 interface ApiSchedule {
@@ -53,6 +79,16 @@ interface ApiCourse {
 
 const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 function headers(studentEmail?: string) {
   return {
     "Content-Type": "application/json",
@@ -65,7 +101,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}) {
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.error ?? "API request failed");
+    throw new ApiRequestError(payload?.error ?? "API request failed", response.status);
   }
 
   return payload as T;
@@ -112,6 +148,35 @@ function mapCourses(courses: ApiCourse[], ratings: ApiTeacherRating[]): Course[]
   });
 }
 
+function mapCourseReview(review: ApiCourseReview): CourseReview {
+  return {
+    id: review.id,
+    course_id: review.courseId,
+    rating: review.rating,
+    comment: review.comment,
+    created_at: review.createdAt
+  };
+}
+
+function mapFriendship(friendship: ApiFriendship, currentStudentEmail: string): Friend {
+  const currentEmail = currentStudentEmail.toLowerCase();
+  const isRequester = friendship.requester.email.toLowerCase() === currentEmail;
+  const otherStudent = isRequester ? friendship.receiver : friendship.requester;
+
+  return {
+    id: `friend-${otherStudent.id}`,
+    studentId: otherStudent.id,
+    friendshipId: friendship.id,
+    status: friendship.status,
+    direction: isRequester ? "outgoing" : "incoming",
+    name: otherStudent.name,
+    email: otherStudent.email,
+    group: otherStudent.classGroup,
+    accent: "#14b8a6",
+    schedule: []
+  };
+}
+
 export const ApiService = {
   login(input: ApiLoginInput) {
     return apiFetch<ApiLoginResponse>("/auth/login", {
@@ -153,11 +218,45 @@ export const ApiService = {
   },
 
   requestFriend(studentEmail: string, friendEmail: string) {
-    return apiFetch("/friends/request", {
+    return apiFetch<{ friendship: ApiFriendship; alreadyExists?: boolean }>("/friends/request", {
       method: "POST",
       headers: headers(studentEmail),
       body: JSON.stringify({ email: friendEmail })
     });
+  },
+
+  async fetchFriends(studentEmail: string) {
+    const response = await apiFetch<{ friendships: ApiFriendship[] }>("/friends", {
+      headers: headers(studentEmail)
+    });
+
+    return response.friendships.map((friendship) => mapFriendship(friendship, studentEmail));
+  },
+
+  async acceptFriend(studentEmail: string, friendshipId: string) {
+    const response = await apiFetch<{ friendship: ApiFriendship }>("/friends/accept", {
+      method: "POST",
+      headers: headers(studentEmail),
+      body: JSON.stringify({ friendshipId })
+    });
+
+    return mapFriendship(response.friendship, studentEmail);
+  },
+
+  async fetchCourseReviews(courseId: string) {
+    const response = await apiFetch<{ reviews: ApiCourseReview[] }>(`/courses/${courseId}/reviews`);
+
+    return response.reviews.map(mapCourseReview);
+  },
+
+  async submitCourseReview(studentEmail: string, courseId: string, rating: number, comment: string) {
+    const response = await apiFetch<{ review: ApiCourseReview }>(`/courses/${courseId}/reviews`, {
+      method: "POST",
+      headers: headers(studentEmail),
+      body: JSON.stringify({ rating, comment })
+    });
+
+    return mapCourseReview(response.review);
   },
 
   sendCommunityMessage(studentEmail: string, communityId: string, content: string) {

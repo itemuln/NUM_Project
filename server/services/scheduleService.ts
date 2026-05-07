@@ -225,7 +225,8 @@ export async function addCourseWithPairing(
           }
         }
       })
-    )
+    ),
+    { timeout: 15000 }
   );
 
   await assignStudentCommunities(studentId);

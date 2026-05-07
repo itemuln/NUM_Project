@@ -43,8 +43,26 @@ const courses = JSON.parse(fs.readFileSync(coursePath, "utf8"));
 const schedules = JSON.parse(fs.readFileSync(schedulePath, "utf8"));
 const courseById = new Map(courses.map((course) => [course.khicheeliin_dugaar, course]));
 const seen = new Set();
+const targetTerms = [
+  { year: "2025-2026", semester: "Намрын улирал", slug: "2025-2026-fall" },
+  { year: "2025-2026", semester: "Хаврын улирал", slug: "2025-2026-spring" },
+  { year: "2026-2027", semester: "Намрын улирал", slug: "2026-2027-fall" },
+  { year: "2026-2027", semester: "Хаврын улирал", slug: "2026-2027-spring" },
+  { year: "2027-2028", semester: "Намрын улирал", slug: "2027-2028-fall" },
+  { year: "2027-2028", semester: "Хаврын улирал", slug: "2027-2028-spring" }
+];
 
-const catalog = schedules.flatMap((schedule) => {
+function termSlug(year, semester) {
+  const season = semester?.includes("Хав") ? "spring" : "fall";
+  return `${year}-${season}`;
+}
+
+function withTermSuffix(id, sourceYear, sourceSemester, term) {
+  if (sourceYear === term.year && sourceSemester === term.semester) return id;
+  return `${id}-${term.slug}`;
+}
+
+const baseCatalog = schedules.flatMap((schedule) => {
   if (!schedule.khuvaariin_dugaar || seen.has(schedule.khuvaariin_dugaar)) return [];
 
   const day = dayMap.get(schedule.garag);
@@ -59,11 +77,15 @@ const catalog = schedules.flatMap((schedule) => {
   const course = courseById.get(schedule.khicheeliin_dugaar);
   const kind = schedule.khicheeliin_khelber === "Лекц" ? "lecture" : "seminar";
   const room = [schedule.khicheellekh_bair, schedule.uruunii_dugaar].filter(Boolean).join(" · ");
+  const year = schedule.khicheeliin_jil ?? "2025-2026";
+  const semester = schedule.uliral ?? "Намрын улирал";
 
   return {
     id: schedule.khuvaariin_dugaar,
     sourceScheduleId: schedule.khuvaariin_dugaar,
     communityCourseId: schedule.khicheeliin_dugaar,
+    baseScheduleId: schedule.khuvaariin_dugaar,
+    baseCourseId: schedule.khicheeliin_dugaar,
     code: course?.khicheeliin_indyeks ?? schedule.khicheeliin_dugaar.slice(0, 8).toUpperCase(),
     name: schedule.khicheeliin_ner,
     teacher: schedule.zaasan_bagshiin_ner,
@@ -74,8 +96,9 @@ const catalog = schedules.flatMap((schedule) => {
     credits: Number(schedule.bagts_tsag ?? course?.bagts_tsag ?? 0),
     preferredDuration: endMinutes - startMinutes,
     department: course?.khariyaalakh_tenkhim ?? course?.khariyaalakh_butets ?? "Тэнхим тодорхойгүй",
-    year: schedule.khicheeliin_jil,
-    semester: schedule.uliral,
+    year,
+    semester,
+    sourceTermSlug: termSlug(year, semester),
     day,
     startMinutes,
     endMinutes,
@@ -84,6 +107,23 @@ const catalog = schedules.flatMap((schedule) => {
     building: schedule.khicheellekh_bair
   };
 });
+
+const catalog = baseCatalog.flatMap((entry) =>
+  targetTerms.map((term) => {
+    const { baseScheduleId, baseCourseId, sourceTermSlug, ...course } = entry;
+    const id = withTermSuffix(entry.baseScheduleId, entry.year, entry.semester, term);
+    const communityCourseId = withTermSuffix(entry.baseCourseId, entry.year, entry.semester, term);
+
+    return {
+      ...course,
+      id,
+      sourceScheduleId: id,
+      communityCourseId,
+      year: term.year,
+      semester: term.semester
+    };
+  })
+);
 
 const semesterOptions = Array.from(
   new Set(catalog.map((course) => `${course.year} · ${course.semester}`).filter(Boolean))

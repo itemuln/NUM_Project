@@ -1,5 +1,5 @@
-import { FormEvent, useState } from "react";
-import { Copy, Link2, Mail, UserPlus } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Check, Copy, Link2, Mail, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useScheduleStore } from "@/hooks/useSchedule";
@@ -22,11 +22,17 @@ export function FriendsPage() {
   const friendNotice = useScheduleStore((state) => state.friendNotice);
   const currentStudent = useScheduleStore((state) => state.currentStudent);
   const addFriendByEmail = useScheduleStore((state) => state.addFriendByEmail);
+  const acceptFriendRequest = useScheduleStore((state) => state.acceptFriendRequest);
+  const loadFriendsFromApi = useScheduleStore((state) => state.loadFriendsFromApi);
   const setSelectedFriend = useScheduleStore((state) => state.setSelectedFriend);
   const inviteLink = `${window.location.origin}?invite=${encodeURIComponent(currentStudent.id)}&school=${encodeURIComponent(currentStudent.school)}`;
   const schoolFriends = friends.filter(
     (friend) => CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school
   );
+
+  useEffect(() => {
+    void loadFriendsFromApi();
+  }, [loadFriendsFromApi]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -104,10 +110,8 @@ export function FriendsPage() {
       <section className="scheduler-scrollbar min-h-0 flex-1 overflow-auto border border-zinc-200 bg-white p-4">
         <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
           {schoolFriends.map((friend) => (
-            <button
+            <div
               key={friend.id}
-              type="button"
-              onClick={() => setSelectedFriend(friend.id)}
               className={cn(
                 "rounded-sm border px-3 py-3 text-left transition-colors",
                 selectedFriendId === friend.id
@@ -115,12 +119,28 @@ export function FriendsPage() {
                   : "border-zinc-200 bg-zinc-50 hover:border-zinc-400"
               )}
             >
-              <div className="text-sm font-semibold text-zinc-950">{friend.name}</div>
-              <div className="mt-1 text-xs text-zinc-500">{friend.email}</div>
-              <div className="mt-3 inline-flex rounded-sm border border-zinc-200 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                {friend.group}
+              <button type="button" onClick={() => setSelectedFriend(friend.id)} className="w-full text-left">
+                <div className="text-sm font-semibold text-zinc-950">{friend.name}</div>
+                <div className="mt-1 text-xs text-zinc-500">{friend.email}</div>
+              </button>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex rounded-sm border border-zinc-200 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  {friend.status === "pending"
+                    ? friend.direction === "incoming"
+                      ? "Ирсэн хүсэлт"
+                      : "Илгээсэн хүсэлт"
+                    : friend.status === "accepted"
+                      ? "Найз"
+                      : friend.group}
+                </div>
+                {friend.status === "pending" && friend.direction === "incoming" && friend.friendshipId && (
+                  <Button size="sm" variant="secondary" onClick={() => acceptFriendRequest(friend.friendshipId!)}>
+                    <Check className="h-3.5 w-3.5" />
+                    Зөвшөөрөх
+                  </Button>
+                )}
               </div>
-            </button>
+            </div>
           ))}
           {schoolFriends.length === 0 && (
             <div className="col-span-full border border-zinc-200 bg-zinc-50 px-4 py-8 text-center text-sm text-zinc-500">

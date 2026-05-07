@@ -175,6 +175,7 @@ export function NewsFeedPage() {
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
 
   const loadItems = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -183,6 +184,7 @@ export function NewsFeedPage() {
     try {
       const nextItems = await NewsService.listItems(signal);
       setItems(nextItems);
+      setLastLoadedAt(new Date().toISOString());
     } catch (nextError) {
       if (signal?.aborted) return;
       setError(nextError instanceof Error ? nextError.message : "Мэдээ уншиж чадсангүй.");
@@ -262,6 +264,16 @@ export function NewsFeedPage() {
             Дахин ачаалах
           </Button>
         </div>
+        {lastLoadedAt && (
+          <div className="mt-2 text-xs text-zinc-500">
+            Сүүлд шинэчилсэн:{" "}
+            {new Intl.DateTimeFormat("mn-MN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit"
+            }).format(new Date(lastLoadedAt))}
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-2">
           {filterOptions.map((item) => (

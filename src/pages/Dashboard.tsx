@@ -19,7 +19,9 @@ export function Dashboard() {
   const setActivePage = useScheduleStore((state) => state.setActivePage);
   const selectedFriend = useSelectedFriend();
   const schoolFriends = friends.filter(
-    (friend) => CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school
+    (friend) =>
+      CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school &&
+      (friend.status ?? "accepted") === "accepted"
   );
 
   return (
