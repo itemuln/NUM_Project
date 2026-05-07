@@ -105,6 +105,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
             variant={item.kind}
             className={cn(
               "hidden shrink-0 border-white/20 text-[10px] lg:inline-flex",
+              owner === "me" && item.kind === "seminar" && "bg-zinc-950 text-white",
               owner === "friend" && "schedule-block-friend-badge"
             )}
           >
