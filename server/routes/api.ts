@@ -110,6 +110,10 @@ function parseProvider(value: unknown) {
   return AuthProvider.password;
 }
 
+function parseAuthMode(value: unknown) {
+  return value === "login" ? "login" : "signup";
+}
+
 async function areFriends(studentId: string, otherStudentId: string) {
   const friendship = await prisma.friendship.findFirst({
     where: {
@@ -147,15 +151,67 @@ router.post(
   asyncHandler(async (request, response) => {
     const email = normalizeEmail(String(request.body.email ?? ""));
     const provider = parseProvider(request.body.provider);
+    const authMode = parseAuthMode(request.body.mode);
     const password = String(request.body.password ?? "");
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new ApiError(400, "Оюутны имэйл хаяг буруу байна.");
     }
+    if (provider === AuthProvider.password && password.length < 6) {
+      throw new ApiError(400, "Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой.");
+    }
 
     await ensureKnownUniversities();
     const university = await ensureUniversityForEmail(email);
     await ensureUniversityTerms(university.id);
+    const providerUserId = provider === AuthProvider.password ? email : String(request.body.providerUserId ?? email);
+    const authAccount = await prisma.authAccount.findUnique({
+      where: {
+        provider_providerUserId: {
+          provider,
+          providerUserId
+        }
+      },
+      include: {
+        student: {
+          include: {
+            university: true
+          }
+        }
+      }
+    });
+
+    if (authMode === "login") {
+      if (!authAccount) {
+        throw new ApiError(404, "Account олдсонгүй. Эхлээд бүртгүүлнэ үү.");
+      }
+      if (authAccount.student.universityId !== university.id) {
+        throw new ApiError(403, "Энэ account өөр сургуулийн домэйнтэй байна.");
+      }
+      if (provider === AuthProvider.password && !verifyPassword(password, authAccount.passwordHash)) {
+        throw new ApiError(401, "Нууц үг буруу байна.");
+      }
+
+      const student = authAccount.student;
+      await assignStudentCommunities(student.id);
+      const communities = await getStudentCommunities(student.id);
+      const terms = await prisma.academicTerm.findMany({
+        where: { universityId: student.universityId },
+        orderBy: [{ academicYear: "asc" }, { season: "desc" }]
+      });
+      const activeTimetable = await getStudentTermTimetable({
+        studentId: student.id,
+        universityId: student.universityId
+      });
+
+      response.json({ student, university: student.university, communities, terms, activeTimetable });
+      return;
+    }
+
+    if (authAccount) {
+      throw new ApiError(409, "Энэ provider дээр account бүртгэлтэй байна. Нэвтрэх хэсгээр орно уу.");
+    }
+
     const student = await prisma.student.upsert({
       where: { email },
       update: {
@@ -176,40 +232,12 @@ router.post(
       }
     });
 
-    const providerUserId = provider === AuthProvider.password ? email : String(request.body.providerUserId ?? email);
-    const authAccount = await prisma.authAccount.findUnique({
-      where: {
-        provider_providerUserId: {
-          provider,
-          providerUserId
-        }
-      }
-    });
-
-    if (provider === AuthProvider.password && authAccount?.passwordHash) {
-      if (!password || !verifyPassword(password, authAccount.passwordHash)) {
-        throw new ApiError(401, "Нууц үг буруу байна.");
-      }
-    }
-
-    await prisma.authAccount.upsert({
-      where: {
-        provider_providerUserId: {
-          provider,
-          providerUserId
-        }
-      },
-      update: {
-        studentId: student.id,
-        ...(provider === AuthProvider.password && password && !authAccount?.passwordHash
-          ? { passwordHash: hashPassword(password) }
-          : {})
-      },
-      create: {
+    await prisma.authAccount.create({
+      data: {
         studentId: student.id,
         provider,
         providerUserId,
-        passwordHash: provider === AuthProvider.password && password ? hashPassword(password) : null
+        passwordHash: provider === AuthProvider.password ? hashPassword(password) : null
       }
     });
 

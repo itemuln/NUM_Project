@@ -6,6 +6,7 @@ import { CommunityService } from "@/services/CommunityService";
 
 const yearOptions = ["1-р курс", "2-р курс", "3-р курс", "4-р курс", "Магистр"];
 const emailSamples = [
+  "23B1NUM3285@stud.num.edu.mn",
   "23B1NUM2119@stud.num.edu.mn",
   "b23fa1631@ufe.edu.mn",
   "enkhtuya.a@muls.edu.mn",
@@ -18,6 +19,7 @@ export function OnboardingModal() {
   const currentStudent = useScheduleStore((state) => state.currentStudent);
   const authNotice = useScheduleStore((state) => state.authNotice);
   const completeOnboarding = useScheduleStore((state) => state.completeOnboarding);
+  const [accountMode, setAccountMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState(currentStudent.email);
   const [program, setProgram] = useState(currentStudent.program);
   const [year, setYear] = useState(currentStudent.year);
@@ -44,7 +46,7 @@ export function OnboardingModal() {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await completeOnboarding({ email, program, year, classGroup, password, provider });
+      await completeOnboarding({ mode: accountMode, email, program, year, classGroup, password, provider });
     } catch {
       // Store owns the localized error message.
     } finally {
@@ -56,8 +58,10 @@ export function OnboardingModal() {
     <div className="scheduler-scrollbar fixed inset-0 z-[60] flex overflow-auto bg-zinc-100 px-4 py-6">
       <section className="m-auto w-full max-w-lg border border-zinc-200 bg-white p-5">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Эхлэх тохиргоо</div>
-          <h1 className="mt-2 text-xl font-semibold text-zinc-950">Төлөвлөгөө гаргах профайл</h1>
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Account</div>
+          <h1 className="mt-2 text-xl font-semibold text-zinc-950">
+            {accountMode === "login" ? "Account-аар нэвтрэх" : "Шинэ account үүсгэх"}
+          </h1>
           <p className="mt-2 text-sm leading-6 text-zinc-500">
             Энэ апп нь хичээл сонголтыг баталгаажуулахгүй. Энд төлөвлөгөө гаргаад, найзын хуваарьтай харьцуулсны дараа
             жинхэнэ сонголтоо сургуулийн албан систем дээр хийнэ.
@@ -65,6 +69,24 @@ export function OnboardingModal() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
+          <div className="grid grid-cols-2 rounded-md border border-zinc-200 bg-zinc-50 p-1">
+            {[
+              { id: "login" as const, label: "Нэвтрэх" },
+              { id: "signup" as const, label: "Бүртгүүлэх" }
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setAccountMode(item.id)}
+                className={`h-9 rounded-sm text-sm font-semibold transition-colors ${
+                  accountMode === item.id ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-500"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-3 gap-2">
             {[
               { id: "password" as const, label: "Нууц үг" },
@@ -100,6 +122,9 @@ export function OnboardingModal() {
             <div className="mt-2 text-xs leading-5 text-zinc-500">
               Жишээ format: {emailSamples.join(" · ")}
             </div>
+            <div className="mt-2 rounded-sm border border-teal-500/25 bg-teal-500/10 px-3 py-2 text-xs leading-5 text-teal-700">
+              Турших account: 23b1num3285@stud.num.edu.mn / password123
+            </div>
             <div className="mt-2 rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-500">
               Танигдсан сургууль: {detectedSchool}
             </div>
@@ -124,56 +149,60 @@ export function OnboardingModal() {
 
           {provider !== "password" && (
             <div className="rounded-sm border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
-              Энэ сонголт нь тухайн Gmail/Teams provider дээр account үүсгэнэ. Жинхэнэ OAuth redirect холболтыг дараагийн
+              {accountMode === "signup" ? "Бүртгүүлэх үед" : "Нэвтрэх үед"} тухайн Gmail/Teams provider account-г ашиглана. Жинхэнэ OAuth redirect холболтыг дараагийн
               шатанд Google/Microsoft client ID тохируулсны дараа асаана.
             </div>
           )}
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-program">
-              Мэргэжил
-            </label>
-            <Input
-              id="student-program"
-              value={program}
-              onChange={(event) => setProgram(event.target.value)}
-              placeholder="Жишээ: Мэдээллийн систем"
-              required
-            />
-          </div>
+          {accountMode === "signup" && (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-program">
+                  Мэргэжил
+                </label>
+                <Input
+                  id="student-program"
+                  value={program}
+                  onChange={(event) => setProgram(event.target.value)}
+                  placeholder="Жишээ: Мэдээллийн систем"
+                  required
+                />
+              </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-year">
-                Курс
-              </label>
-              <select
-                id="student-year"
-                value={year}
-                onChange={(event) => setYear(event.target.value)}
-                className="h-10 w-full rounded-sm border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-950 focus:ring-2 focus:ring-teal-500/20"
-              >
-                {yearOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-year">
+                    Курс
+                  </label>
+                  <select
+                    id="student-year"
+                    value={year}
+                    onChange={(event) => setYear(event.target.value)}
+                    className="h-10 w-full rounded-sm border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-950 focus:ring-2 focus:ring-teal-500/20"
+                  >
+                    {yearOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-class">
-                Анги / бүлэг
-              </label>
-              <Input
-                id="student-class"
-                value={classGroup}
-                onChange={(event) => setClassGroup(event.target.value)}
-                placeholder="CS-2B"
-                required
-              />
-            </div>
-          </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-class">
+                    Анги / бүлэг
+                  </label>
+                  <Input
+                    id="student-class"
+                    value={classGroup}
+                    onChange={(event) => setClassGroup(event.target.value)}
+                    placeholder="CS-2B"
+                    required
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           {authNotice && (
             <div className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
@@ -182,7 +211,7 @@ export function OnboardingModal() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? "Нэвтэрч байна..." : "Нэвтрэх"}
+            {submitting ? "Уншиж байна..." : accountMode === "login" ? "Нэвтрэх" : "Account үүсгэх"}
           </Button>
         </form>
       </section>

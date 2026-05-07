@@ -75,6 +75,7 @@ interface ScheduleState {
   theme: ThemeMode;
   setComparisonMode: (enabled: boolean) => void;
   completeOnboarding: (input: {
+    mode: "login" | "signup";
     email: string;
     program: string;
     year: string;
@@ -618,6 +619,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     try {
       const response = await ApiService.login({
         email: normalizedEmail,
+        mode: input.mode,
         name: "Та",
         major: program,
         classGroup,

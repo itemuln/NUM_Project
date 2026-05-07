@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { AuthProvider, ScheduleType, TermSeason } from "@prisma/client";
 import { prisma } from "../server/db.js";
 import { assignStudentCommunities } from "../server/services/communityService.js";
+import { hashPassword } from "../server/services/authService.js";
 import { addCourseWithPairing } from "../server/services/scheduleService.js";
 import { ensureKnownUniversities } from "../server/services/universityService.js";
 
@@ -225,6 +226,13 @@ async function seedStudents(universityId: string) {
       name: "Тэмүүлэн",
       major: "Computer Science",
       classGroup: "CS-2B"
+    },
+    {
+      id: "student-3285-test",
+      email: "23b1num3285@stud.num.edu.mn",
+      name: "NUM 3285 тест",
+      major: "Information Systems",
+      classGroup: "IS-2B"
     }
   ];
 
@@ -268,11 +276,14 @@ async function seedStudents(universityId: string) {
   return {
     main: students[0].id,
     anu: students[1].id,
-    temuulen: students[2].id
+    temuulen: students[2].id,
+    sample3285: students[3].id
   };
 }
 
-async function seedAuthAccounts(studentIds: { main: string; anu: string; temuulen: string }) {
+type SeedStudentIds = Awaited<ReturnType<typeof seedStudents>>;
+
+async function seedAuthAccounts(studentIds: SeedStudentIds) {
   const students = await prisma.student.findMany({
     where: {
       id: {
@@ -281,18 +292,32 @@ async function seedAuthAccounts(studentIds: { main: string; anu: string; temuule
     }
   });
 
-  await prisma.authAccount.createMany({
-    data: students.map((student) => ({
-      id: `auth-password-${student.id}`,
-      studentId: student.id,
-      provider: AuthProvider.password,
-      providerUserId: student.email.toLowerCase()
-    })),
-    skipDuplicates: true
-  });
+  const passwordHash = hashPassword("password123");
+
+  for (const student of students) {
+    await prisma.authAccount.upsert({
+      where: {
+        provider_providerUserId: {
+          provider: AuthProvider.password,
+          providerUserId: student.email.toLowerCase()
+        }
+      },
+      update: {
+        studentId: student.id,
+        passwordHash
+      },
+      create: {
+        id: `auth-password-${student.id}`,
+        studentId: student.id,
+        provider: AuthProvider.password,
+        providerUserId: student.email.toLowerCase(),
+        passwordHash
+      }
+    });
+  }
 }
 
-async function enrollSeedSchedules(studentIds: { main: string; anu: string; temuulen: string }) {
+async function enrollSeedSchedules(studentIds: SeedStudentIds) {
   const poliLecture = await prisma.schedule.findFirst({
     where: { course: { code: "POLI315" }, type: ScheduleType.lecture }
   });
@@ -317,9 +342,10 @@ async function enrollSeedSchedules(studentIds: { main: string; anu: string; temu
   await tryEnroll(studentIds.main, poliLecture?.id);
   await tryEnroll(studentIds.anu, prLecture?.id);
   await tryEnroll(studentIds.temuulen, socialSeminar?.id);
+  await tryEnroll(studentIds.sample3285, prLecture?.id);
 }
 
-async function seedFriendships(studentIds: { main: string; anu: string; temuulen: string }) {
+async function seedFriendships(studentIds: SeedStudentIds) {
   await prisma.friendship.upsert({
     where: {
       requesterId_receiverId: {
@@ -349,9 +375,54 @@ async function seedFriendships(studentIds: { main: string; anu: string; temuulen
       status: "pending"
     }
   });
+
+  await prisma.friendship.upsert({
+    where: {
+      requesterId_receiverId: {
+        requesterId: studentIds.sample3285,
+        receiverId: studentIds.anu
+      }
+    },
+    update: { status: "accepted" },
+    create: {
+      requesterId: studentIds.sample3285,
+      receiverId: studentIds.anu,
+      status: "accepted"
+    }
+  });
+
+  await prisma.friendship.upsert({
+    where: {
+      requesterId_receiverId: {
+        requesterId: studentIds.main,
+        receiverId: studentIds.sample3285
+      }
+    },
+    update: { status: "accepted" },
+    create: {
+      requesterId: studentIds.main,
+      receiverId: studentIds.sample3285,
+      status: "accepted"
+    }
+  });
+
+  await prisma.friendship.upsert({
+    where: {
+      requesterId_receiverId: {
+        requesterId: studentIds.temuulen,
+        receiverId: studentIds.sample3285
+      }
+    },
+    update: { status: "pending" },
+    create: {
+      requesterId: studentIds.temuulen,
+      receiverId: studentIds.sample3285,
+      status: "pending"
+    }
+  });
 }
 
-async function seedMessages(studentIds: { main: string; anu: string; temuulen: string }) {
+async function seedMessages(studentIds: SeedStudentIds) {
   await Promise.all(Object.values(studentIds).map((studentId) => assignStudentCommunities(studentId)));
   const mainCommunities = await prisma.communityMember.findMany({
     where: { studentId: studentIds.main },
@@ -391,7 +462,7 @@ async function seedMessages(studentIds: { main: string; anu: string; temuulen: s
   }
 }
 
-async function seedCourseReviews(studentIds: { main: string; anu: string; temuulen: string }) {
+async function seedCourseReviews(studentIds: SeedStudentIds) {
   const courses = await prisma.course.findMany({
     where: {
       OR: [{ code: "POLI315" }, { code: { contains: "PR" } }]

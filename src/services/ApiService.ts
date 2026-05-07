@@ -2,6 +2,7 @@ import type { Course, CourseKind, CourseReview, DayKey, Friend } from "@/types";
 
 interface ApiLoginInput {
   email: string;
+  mode: "login" | "signup";
   name?: string;
   major: string;
   classGroup: string;
