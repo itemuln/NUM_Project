@@ -5,6 +5,8 @@ interface ApiLoginInput {
   name?: string;
   major: string;
   classGroup: string;
+  password?: string;
+  provider?: "password" | "google" | "microsoft";
 }
 
 interface ApiTeacherRating {

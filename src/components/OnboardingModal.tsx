@@ -21,6 +21,8 @@ export function OnboardingModal() {
   const [program, setProgram] = useState(currentStudent.program);
   const [year, setYear] = useState(currentStudent.year);
   const [classGroup, setClassGroup] = useState(currentStudent.class_group);
+  const [password, setPassword] = useState("");
+  const [provider, setProvider] = useState<"password" | "google" | "microsoft">("password");
   const detectedSchool = CommunityService.detectSchoolFromEmail(email);
 
   useEffect(() => {
@@ -30,13 +32,15 @@ export function OnboardingModal() {
     setProgram(currentStudent.program);
     setYear(currentStudent.year);
     setClassGroup(currentStudent.class_group);
+    setPassword("");
+    setProvider("password");
   }, [currentStudent, isOnboarded]);
 
   if (isOnboarded) return null;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    completeOnboarding({ email, program, year, classGroup });
+    completeOnboarding({ email, program, year, classGroup, password, provider });
   };
 
   return (
@@ -52,6 +56,27 @@ export function OnboardingModal() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "password" as const, label: "Нууц үг" },
+              { id: "google" as const, label: "Gmail" },
+              { id: "microsoft" as const, label: "Teams" }
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setProvider(item.id)}
+                className={`rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
+                  provider === item.id
+                    ? "border-zinc-950 bg-zinc-950 text-white"
+                    : "border-zinc-200 bg-zinc-50 text-zinc-500"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-email">
               Оюутны имэйл
@@ -70,6 +95,30 @@ export function OnboardingModal() {
               Танигдсан сургууль: {detectedSchool}
             </div>
           </div>
+
+          {provider === "password" && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-password">
+                Нууц үг
+              </label>
+              <Input
+                id="student-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Нууц үгээ оруулна"
+                required
+                minLength={6}
+              />
+            </div>
+          )}
+
+          {provider !== "password" && (
+            <div className="rounded-sm border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
+              OAuth холболт дараагийн шатанд жинхэнэ Gmail/Teams authorize болно. Одоогоор сонгосон provider-ээр
+              сургуулийн имэйл дээр үндэслэн профайл үүсгэнэ.
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500" htmlFor="student-program">

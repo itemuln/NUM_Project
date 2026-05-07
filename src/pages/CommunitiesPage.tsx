@@ -24,27 +24,33 @@ const isVisibleCommunityType = (type: CommunityType) => type === "school" || typ
 
 function CommunityCard({ community }: { community: Community }) {
   const selectedCommunityId = useScheduleStore((state) => state.selectedCommunityId);
+  const communityMessages = useScheduleStore((state) => state.communityMessages);
   const setSelectedCommunity = useScheduleStore((state) => state.setSelectedCommunity);
   const Icon = typeIcons[community.type];
   const selected = selectedCommunityId === community.id;
+  const lastMessage = communityMessages[community.id]?.at(-1);
 
   return (
     <button
       type="button"
       onClick={() => setSelectedCommunity(community.id)}
       className={cn(
-        "flex w-full items-center justify-between gap-3 rounded-sm border px-3 py-3 text-left transition-colors",
+        "flex w-full items-center justify-between gap-3 rounded-md border px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5",
         selected ? "border-teal-500 bg-teal-500/15" : "border-zinc-200 bg-white hover:border-zinc-400"
       )}
     >
       <span className="flex min-w-0 items-center gap-3">
-        <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+          <Icon className="h-4 w-4" />
+        </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold text-zinc-950">{community.name}</span>
-          <span className="block text-xs text-zinc-500">{community.memberCount} гишүүн</span>
+          <span className="block truncate text-xs text-zinc-500">
+            {lastMessage?.content ?? `${community.memberCount} гишүүн · Чат нээх`}
+          </span>
         </span>
       </span>
-      <span className="rounded-sm bg-zinc-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+      <span className="shrink-0 rounded-full bg-zinc-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
         {typeLabels[community.type]}
       </span>
     </button>
@@ -69,10 +75,11 @@ export function CommunitiesPage() {
       <header className="shrink-0 border border-zinc-200 bg-white px-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Автомат бүлгүүд</div>
-            <h1 className="mt-1 text-xl font-semibold text-zinc-950">Бүлгүүд</h1>
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Messenger хэлбэрийн community</div>
+            <h1 className="mt-1 text-xl font-semibold text-zinc-950">Бүлэг чат</h1>
             <p className="mt-2 text-sm text-zinc-500">
-              Зөвхөн {currentStudent.school} сургуулийн таны харьяалагдах бүлгүүд харагдана.
+              Бүлэг дээр дарахад баруун талд чат нээгдэнэ. Зөвхөн {currentStudent.school} сургуулийн таны харьяалагдах
+              бүлгүүд харагдана.
             </p>
           </div>
           <div className="relative w-full max-w-sm">

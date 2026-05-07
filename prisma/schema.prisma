@@ -24,6 +24,17 @@ enum CommunityType {
   course
 }
 
+enum TermSeason {
+  spring
+  fall
+}
+
+enum AuthProvider {
+  password
+  google
+  microsoft
+}
+
 model University {
   id          String      @id @default(cuid())
   name        String
@@ -31,6 +42,7 @@ model University {
   createdAt   DateTime    @default(now())
   students    Student[]
   courses     Course[]
+  terms       AcademicTerm[]
   communities Community[]
 
   @@index([domain])
@@ -50,9 +62,43 @@ model Student {
   receivedFriendships Friendship[]      @relation("FriendshipReceiver")
   communityMembers    CommunityMember[]
   messages            Message[]
+  authAccounts         AuthAccount[]
+  timetables           Timetable[]
 
   @@index([universityId])
   @@index([classGroup])
+}
+
+model AuthAccount {
+  id             String       @id @default(cuid())
+  studentId      String
+  provider       AuthProvider
+  providerUserId String
+  passwordHash   String?
+  createdAt      DateTime     @default(now())
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@unique([studentId, provider])
+  @@index([studentId])
+}
+
+model AcademicTerm {
+  id           String      @id @default(cuid())
+  universityId String
+  academicYear String
+  season       TermSeason
+  label        String
+  startsAt     DateTime?
+  endsAt       DateTime?
+  createdAt    DateTime    @default(now())
+  university   University  @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  courses      Course[]
+  schedules    Schedule[]
+  timetables   Timetable[]
+
+  @@unique([universityId, academicYear, season])
+  @@index([universityId])
 }
 
 model Course {
@@ -62,13 +108,16 @@ model Course {
   teacherName  String
   credit       Int
   universityId String
+  termId       String
   semester     String
   year         String
   university   University   @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  term         AcademicTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
   schedules    Schedule[]
   enrollments  Enrollment[]
 
   @@index([universityId])
+  @@index([termId])
   @@index([code])
   @@index([name])
   @@index([teacherName])
@@ -77,6 +126,7 @@ model Course {
 model Schedule {
   id          String       @id @default(cuid())
   courseId    String
+  termId      String
   day         String
   startTime   String
   endTime     String
@@ -86,24 +136,49 @@ model Schedule {
   semester    String
   year        String
   course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  term        AcademicTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
 
   @@unique([courseId, day, startTime, endTime, type, room, semester, year])
+  @@index([termId])
   @@index([day])
+}
+
+model Timetable {
+  id          String       @id @default(cuid())
+  studentId   String
+  termId      String
+  name        String
+  isActive    Boolean      @default(true)
+  isShared    Boolean      @default(false)
+  shareToken  String       @unique @default(cuid())
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  term        AcademicTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+
+  @@unique([studentId, termId, name])
+  @@index([studentId])
+  @@index([termId])
 }
 
 model Enrollment {
   id         String   @id @default(cuid())
   studentId  String
+  timetableId String
   courseId   String
   scheduleId String
   createdAt  DateTime @default(now())
   student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  timetable  Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
   course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, scheduleId])
+  @@unique([timetableId, scheduleId])
   @@index([studentId])
+  @@index([timetableId])
   @@index([courseId])
 }
 

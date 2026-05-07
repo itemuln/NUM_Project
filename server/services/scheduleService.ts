@@ -2,6 +2,7 @@ import { ScheduleType, type Schedule } from "@prisma/client";
 import { prisma } from "../db.js";
 import { ApiError } from "../errors.js";
 import { assignStudentCommunities } from "./communityService.js";
+import { findTermBySchedule, getOrCreateTimetable, resolveTerm } from "./termService.js";
 
 const dayStartMinutes = 8 * 60;
 const dayEndMinutes = 20 * 60;
@@ -36,14 +37,29 @@ export function detectConflict(scheduleA: TimeInterval, scheduleB: TimeInterval)
   );
 }
 
-export async function getStudentSchedule(studentId: string) {
+export async function getStudentSchedule(studentId: string, termId?: string | null) {
   return prisma.enrollment.findMany({
-    where: { studentId },
+    where: {
+      studentId,
+      ...(termId
+        ? {
+            timetable: {
+              termId
+            }
+          }
+        : {})
+    },
     include: {
+      timetable: {
+        include: {
+          term: true
+        }
+      },
       course: true,
       schedule: {
         include: {
-          course: true
+          course: true,
+          term: true
         }
       }
     },
@@ -95,7 +111,7 @@ function sortPairCandidates(candidate: Schedule, existingSchedules: Schedule[]) 
 export async function addCourseWithPairing(
   studentId: string,
   scheduleId: string,
-  options: { allowConflicts?: boolean } = {}
+  options: { allowConflicts?: boolean; timetableId?: string; termId?: string } = {}
 ) {
   const selectedSchedule = await prisma.schedule.findUnique({
     where: { id: scheduleId },
@@ -106,12 +122,28 @@ export async function addCourseWithPairing(
     throw new ApiError(404, "Хуваарийн цаг олдсонгүй.");
   }
 
-  const duplicate = await prisma.enrollment.findUnique({
+  const term = options.termId
+    ? await prisma.academicTerm.findUniqueOrThrow({ where: { id: options.termId } })
+    : await findTermBySchedule(scheduleId);
+  const timetable = options.timetableId
+    ? await prisma.timetable.findFirstOrThrow({
+        where: {
+          id: options.timetableId,
+          studentId,
+          termId: term.id
+        },
+        include: { term: true }
+      })
+    : await getOrCreateTimetable(studentId, term);
+
+  if (selectedSchedule.termId !== term.id) {
+    throw new ApiError(400, "Энэ хичээлийн цаг сонгосон улиралд харьяалагдахгүй байна.");
+  }
+
+  const duplicate = await prisma.enrollment.findFirst({
     where: {
-      studentId_scheduleId: {
-        studentId,
-        scheduleId
-      }
+      timetableId: timetable.id,
+      scheduleId
     }
   });
 
@@ -119,7 +151,7 @@ export async function addCourseWithPairing(
     throw new ApiError(409, "Энэ цаг таны хуваарьт аль хэдийн байна.");
   }
 
-  const currentEnrollments = await getStudentSchedule(studentId);
+  const currentEnrollments = await getStudentSchedule(studentId, term.id);
   const existingSchedules = currentEnrollments.map((enrollment) => enrollment.schedule);
   const existingScheduleIds = new Set(existingSchedules.map((schedule) => schedule.id));
   const schedulesToAdd: Schedule[] = [selectedSchedule];
@@ -135,8 +167,7 @@ export async function addCourseWithPairing(
       where: {
         id: { not: selectedSchedule.id },
         courseId: selectedSchedule.courseId,
-        semester: selectedSchedule.semester,
-        year: selectedSchedule.year,
+        termId: term.id,
         type: targetPairType
       }
     });
@@ -175,14 +206,21 @@ export async function addCourseWithPairing(
         update: {},
         create: {
           studentId,
+          timetableId: timetable.id,
           courseId: schedule.courseId,
           scheduleId: schedule.id
         },
         include: {
+          timetable: {
+            include: {
+              term: true
+            }
+          },
           course: true,
           schedule: {
             include: {
-              course: true
+              course: true,
+              term: true
             }
           }
         }
@@ -194,18 +232,27 @@ export async function addCourseWithPairing(
 
   return {
     enrollments,
+    timetable,
+    term,
     addedScheduleIds: schedulesToAdd.map((schedule) => schedule.id),
     paired: schedulesToAdd.length > 1,
     conflicts
   };
 }
 
-export async function getCommonFreeTime(studentIds: string[]) {
+export async function getCommonFreeTime(studentIds: string[], termId?: string | null) {
   const enrollments = await prisma.enrollment.findMany({
     where: {
       studentId: {
         in: studentIds
-      }
+      },
+      ...(termId
+        ? {
+            timetable: {
+              termId
+            }
+          }
+        : {})
     },
     include: {
       schedule: true
@@ -261,4 +308,22 @@ export async function getCommonFreeTime(studentIds: string[]) {
 
     return freeBlocks;
   });
+}
+
+export async function getStudentTermTimetable(input: {
+  studentId: string;
+  universityId: string;
+  termId?: string | null;
+  semester?: string | null;
+  year?: string | null;
+}) {
+  const term = await resolveTerm(input);
+  const timetable = await getOrCreateTimetable(input.studentId, term);
+  const enrollments = await getStudentSchedule(input.studentId, term.id);
+
+  return {
+    term,
+    timetable,
+    enrollments
+  };
 }

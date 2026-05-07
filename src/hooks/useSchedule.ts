@@ -70,7 +70,14 @@ interface ScheduleState {
   rightPanelWidth: number;
   theme: ThemeMode;
   setComparisonMode: (enabled: boolean) => void;
-  completeOnboarding: (input: { email: string; program: string; year: string; classGroup: string }) => void;
+  completeOnboarding: (input: {
+    email: string;
+    program: string;
+    year: string;
+    classGroup: string;
+    password?: string;
+    provider?: "password" | "google" | "microsoft";
+  }) => void;
   logOut: () => void;
   setActivePage: (page: AppPage) => void;
   openCourseModal: () => void;
@@ -554,7 +561,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       email: normalizedEmail,
       name: "Та",
       major: input.program.trim() || "Тодорхойгүй хөтөлбөр",
-      classGroup: input.classGroup.trim() || "Тодорхойгүй"
+      classGroup: input.classGroup.trim() || "Тодорхойгүй",
+      password: input.password,
+      provider: input.provider ?? "password"
     }).catch(() => {
       // IndexedDB/local state remains the offline fallback when the API is not running.
     });

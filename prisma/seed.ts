@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ScheduleType } from "@prisma/client";
+import { AuthProvider, ScheduleType, TermSeason } from "@prisma/client";
 import { prisma } from "../server/db.js";
 import { assignStudentCommunities } from "../server/services/communityService.js";
 import { addCourseWithPairing } from "../server/services/scheduleService.js";
@@ -44,8 +44,51 @@ function toScheduleType(kind: CatalogCourse["kind"]) {
   return ScheduleType.lecture;
 }
 
+function detectSeason(semester?: string) {
+  return semester?.toLowerCase().includes("хав") || semester?.toLowerCase().includes("spring")
+    ? TermSeason.spring
+    : TermSeason.fall;
+}
+
+function termLabel(academicYear: string, season: TermSeason) {
+  return `${academicYear} · ${season === TermSeason.spring ? "Хаврын улирал" : "Намрын улирал"}`;
+}
+
+function termId(universityId: string, academicYear: string, season: TermSeason) {
+  return `term-${universityId}-${academicYear}-${season}`;
+}
+
+async function ensureAcademicTerms(universityId: string) {
+  const years = ["2025-2026", "2026-2027", "2027-2028"];
+  const terms = years.flatMap((academicYear) => [
+    {
+      id: termId(universityId, academicYear, TermSeason.fall),
+      universityId,
+      academicYear,
+      season: TermSeason.fall,
+      label: termLabel(academicYear, TermSeason.fall)
+    },
+    {
+      id: termId(universityId, academicYear, TermSeason.spring),
+      universityId,
+      academicYear,
+      season: TermSeason.spring,
+      label: termLabel(academicYear, TermSeason.spring)
+    }
+  ]);
+
+  await prisma.academicTerm.createMany({
+    data: terms,
+    skipDuplicates: true
+  });
+
+  return terms;
+}
+
 async function seedUniversities() {
   await ensureKnownUniversities();
+  const universities = await prisma.university.findMany();
+  await Promise.all(universities.map((university) => ensureAcademicTerms(university.id)));
 
   return prisma.university.findUniqueOrThrow({
     where: { domain: "stud.num.edu.mn" }
@@ -53,6 +96,7 @@ async function seedUniversities() {
 }
 
 async function seedCatalog(universityId: string) {
+  await ensureAcademicTerms(universityId);
   const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as CatalogCourse[];
   const courses = new Map<string, CatalogCourse>();
 
@@ -68,6 +112,11 @@ async function seedCatalog(universityId: string) {
       teacherName: catalogCourse.teacher,
       credit: Number(catalogCourse.credits) || 3,
       universityId,
+      termId: termId(
+        universityId,
+        catalogCourse.year ?? "2025-2026",
+        detectSeason(catalogCourse.semester)
+      ),
       semester: catalogCourse.semester ?? "Намрын улирал",
       year: catalogCourse.year ?? "2025-2026"
     })),
@@ -78,6 +127,7 @@ async function seedCatalog(universityId: string) {
   const schedules: Array<{
     id: string;
     courseId: string;
+    termId: string;
     day: string;
     startTime: string;
     endTime: string;
@@ -112,6 +162,11 @@ async function seedCatalog(universityId: string) {
     schedules.push({
       id: catalogCourse.sourceScheduleId ?? catalogCourse.id,
       courseId: catalogCourse.communityCourseId ?? catalogCourse.id,
+      termId: termId(
+        universityId,
+        catalogCourse.year ?? "2025-2026",
+        detectSeason(catalogCourse.semester)
+      ),
       day: catalogCourse.day,
       startTime: minutesToTime(catalogCourse.startMinutes),
       endTime: minutesToTime(catalogCourse.endMinutes),
@@ -191,6 +246,7 @@ async function seedStudents(universityId: string) {
   }
 
   const ufe = await prisma.university.findUniqueOrThrow({ where: { domain: "ufe.edu.mn" } });
+  await ensureAcademicTerms(ufe.id);
   await prisma.student.upsert({
     where: { email: "b23fa1631@ufe.edu.mn" },
     update: {
@@ -216,6 +272,26 @@ async function seedStudents(universityId: string) {
   };
 }
 
+async function seedAuthAccounts(studentIds: { main: string; anu: string; temuulen: string }) {
+  const students = await prisma.student.findMany({
+    where: {
+      id: {
+        in: [...Object.values(studentIds), "student-ufe-test"]
+      }
+    }
+  });
+
+  await prisma.authAccount.createMany({
+    data: students.map((student) => ({
+      id: `auth-password-${student.id}`,
+      studentId: student.id,
+      provider: AuthProvider.password,
+      providerUserId: student.email.toLowerCase()
+    })),
+    skipDuplicates: true
+  });
+}
+
 async function enrollSeedSchedules(studentIds: { main: string; anu: string; temuulen: string }) {
   const poliLecture = await prisma.schedule.findFirst({
     where: { course: { code: "POLI315" }, type: ScheduleType.lecture }
@@ -227,9 +303,20 @@ async function enrollSeedSchedules(studentIds: { main: string; anu: string; temu
     where: { course: { name: { contains: "Нийгмийн" } }, type: ScheduleType.seminar }
   });
 
-  if (poliLecture) await addCourseWithPairing(studentIds.main, poliLecture.id, { allowConflicts: true });
-  if (prLecture) await addCourseWithPairing(studentIds.anu, prLecture.id, { allowConflicts: true });
-  if (socialSeminar) await addCourseWithPairing(studentIds.temuulen, socialSeminar.id, { allowConflicts: true });
+  const tryEnroll = async (studentId: string, scheduleId?: string) => {
+    if (!scheduleId) return;
+
+    try {
+      await addCourseWithPairing(studentId, scheduleId, { allowConflicts: true });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("аль хэдийн")) return;
+      throw error;
+    }
+  };
+
+  await tryEnroll(studentIds.main, poliLecture?.id);
+  await tryEnroll(studentIds.anu, prLecture?.id);
+  await tryEnroll(studentIds.temuulen, socialSeminar?.id);
 }
 
 async function seedFriendships(studentIds: { main: string; anu: string; temuulen: string }) {
@@ -306,8 +393,10 @@ async function seedMessages(studentIds: { main: string; anu: string; temuulen: s
 
 async function main() {
   const muis = await seedUniversities();
+  await ensureAcademicTerms(muis.id);
   await seedCatalog(muis.id);
   const studentIds = await seedStudents(muis.id);
+  await seedAuthAccounts(studentIds);
   await enrollSeedSchedules(studentIds);
   await seedFriendships(studentIds);
   await seedMessages(studentIds);
