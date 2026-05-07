@@ -128,6 +128,56 @@ body {
   color: #f4f4f5;
 }
 
+.schedule-block-own {
+  box-shadow: 0 8px 22px rgba(159, 18, 57, 0.18);
+}
+
+.schedule-block-lecture {
+  border-color: #be123c;
+  background: linear-gradient(135deg, #be123c 0%, #e11d48 100%);
+}
+
+.schedule-block-seminar {
+  border-color: #dc2626;
+  background: linear-gradient(135deg, #dc2626 0%, #f43f5e 100%);
+}
+
+.schedule-block-lab {
+  border-color: #ea580c;
+  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+}
+
+.schedule-block-friend {
+  border-color: #fda4af;
+  background-color: rgba(244, 63, 94, 0.1);
+  color: #881337;
+}
+
+[data-theme="dark"] .schedule-block-own {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+}
+
+[data-theme="dark"] .schedule-block-lecture {
+  border-color: #881337;
+  background: linear-gradient(135deg, #881337 0%, #be123c 100%);
+}
+
+[data-theme="dark"] .schedule-block-seminar {
+  border-color: #7f1d1d;
+  background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%);
+}
+
+[data-theme="dark"] .schedule-block-lab {
+  border-color: #9a3412;
+  background: linear-gradient(135deg, #9a3412 0%, #c2410c 100%);
+}
+
+[data-theme="dark"] .schedule-block-friend {
+  border-color: rgba(251, 113, 133, 0.55);
+  background-color: rgba(244, 63, 94, 0.14);
+  color: #fecdd3;
+}
+
 button,
 input {
   font: inherit;

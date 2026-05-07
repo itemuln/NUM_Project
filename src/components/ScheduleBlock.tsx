@@ -76,13 +76,11 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
       }}
       className={cn(
         "group absolute rounded-md border p-2 text-left transition-[box-shadow,opacity,border-color,transform,filter] duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110",
-        owner === "me" &&
-          item.kind === "lecture" &&
-          "z-20 border-zinc-950 bg-zinc-950 text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)]",
-        owner === "me" && item.kind === "seminar" && "z-20 border-teal-700 bg-teal-700 text-white shadow-[0_8px_24px_rgba(0,0,0,0.20)]",
-        owner === "me" && item.kind === "lab" && "z-20 border-indigo-700 bg-indigo-700 text-white shadow-[0_8px_24px_rgba(0,0,0,0.20)]",
-        owner === "friend" &&
-          "pointer-events-none z-10 border-dashed border-indigo-400 bg-indigo-500/15 text-indigo-950 backdrop-blur-[1px]",
+        owner === "me" && "schedule-block-own z-20 text-white",
+        owner === "me" && item.kind === "lecture" && "schedule-block-lecture",
+        owner === "me" && item.kind === "seminar" && "schedule-block-seminar",
+        owner === "me" && item.kind === "lab" && "schedule-block-lab",
+        owner === "friend" && "schedule-block-friend pointer-events-none z-10 border-dashed backdrop-blur-[1px]",
         conflict && owner === "me" && "border-red-400 ring-2 ring-red-500/50",
         conflict && owner === "friend" && "border-red-400 bg-red-500/20",
         isDragging && "z-50 scale-[1.02] opacity-80 shadow-[0_22px_52px_rgba(0,0,0,0.38)]"
@@ -96,7 +94,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
             <div
               className={cn(
                 "truncate text-[11px] font-semibold uppercase tracking-wide",
-                owner === "me" ? "text-white/68" : "text-indigo-700"
+                owner === "me" ? "text-white/72" : "text-rose-700"
               )}
             >
               {formatMinutes(item.startMinutes)} - {formatMinutes(item.endMinutes)}
@@ -107,7 +105,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
             variant={item.kind}
             className={cn(
               "hidden shrink-0 border-white/20 text-[10px] lg:inline-flex",
-              owner === "friend" && "border-indigo-200 bg-white/80 text-indigo-700"
+              owner === "friend" && "border-rose-200 bg-white/80 text-rose-700"
             )}
           >
             {kindLabels[item.kind]}
@@ -117,7 +115,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
         <div
           className={cn(
             "mt-1.5 min-w-0 space-y-1 text-[11px] leading-4",
-            owner === "me" ? "text-white/78" : "text-indigo-800"
+            owner === "me" ? "text-white/82" : "text-rose-800"
           )}
         >
           <div className="flex min-w-0 items-center gap-1.5">
