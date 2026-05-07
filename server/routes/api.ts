@@ -504,7 +504,8 @@ router.get(
     });
 
     if (!timetable) {
-      throw new ApiError(403, "Энэ улирлын хуваарь share хийгдээгүй байна.");
+      response.json({ student: targetStudent, term, timetable: null, schedule: [] });
+      return;
     }
 
     const schedule = await getStudentSchedule(targetStudent.id, term.id);

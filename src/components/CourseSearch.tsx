@@ -37,7 +37,7 @@ function semesterKey(course: Course) {
 }
 
 function scheduleSemesterKey(item: ScheduleItem) {
-  return `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
+  return item.semesterKey ?? `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
 }
 
 function courseReviewKey(course: Course) {

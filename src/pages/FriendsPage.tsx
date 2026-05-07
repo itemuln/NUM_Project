@@ -14,6 +14,8 @@ const emailSamples = [
   "MMS24D155@etugen.edu.mn"
 ];
 
+const normalizeStatus = (status?: string | null) => status?.toLowerCase() ?? "accepted";
+
 export function FriendsPage() {
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState(false);
@@ -125,15 +127,15 @@ export function FriendsPage() {
               </button>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="inline-flex rounded-sm border border-zinc-200 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                  {friend.status === "pending"
+                  {normalizeStatus(friend.status) === "pending"
                     ? friend.direction === "incoming"
                       ? "Ирсэн хүсэлт"
                       : "Илгээсэн хүсэлт"
-                    : friend.status === "accepted"
+                    : normalizeStatus(friend.status) === "accepted"
                       ? "Найз"
                       : friend.group}
                 </div>
-                {friend.status === "pending" && friend.direction === "incoming" && friend.friendshipId && (
+                {normalizeStatus(friend.status) === "pending" && friend.direction === "incoming" && friend.friendshipId && (
                   <Button size="sm" variant="secondary" onClick={() => acceptFriendRequest(friend.friendshipId!)}>
                     <Check className="h-3.5 w-3.5" />
                     Зөвшөөрөх

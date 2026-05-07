@@ -41,6 +41,8 @@ interface ScheduleState {
   students: Student[];
   courses: Course[];
   currentUserSchedule: ScheduleItem[];
+  studentSchedules: Record<string, Record<string, ScheduleItem[]>>;
+  scheduleUpdatedAt: Record<string, string>;
   friends: Friend[];
   groups: Group[];
   schoolEvents: SchoolEvent[];
@@ -98,6 +100,9 @@ interface ScheduleState {
   loadCourseCatalog: () => Promise<void>;
   hydrateFromDatabase: (snapshot: AppDatabaseSnapshot | null) => void;
   loadFriendsFromApi: () => Promise<void>;
+  loadStudentSchedule: (studentId: string, semester: string) => Promise<ScheduleItem[]>;
+  getFriendSchedule: (friendId: string, semester: string) => Promise<ScheduleItem[]>;
+  loadAcceptedFriendSchedules: (semester: string) => Promise<void>;
   addFriendByEmail: (email: string) => void;
   acceptFriendRequest: (friendshipId: string) => void;
   addCourseFromCatalog: (courseId: string) => void;
@@ -291,8 +296,16 @@ const friendBelongsToSchool = (friend: Friend, school: string) =>
 const getSchoolFriends = (friends: Friend[], school: string) =>
   friends.filter((friend) => friendBelongsToSchool(friend, school));
 
+const normalizeFriendStatus = (status?: string | null) => {
+  const normalized = status?.toLowerCase();
+  if (normalized === "pending" || normalized === "rejected") return normalized;
+  return "accepted";
+};
+
+const isAcceptedFriend = (friend: Friend) => normalizeFriendStatus(friend.status) === "accepted";
+
 const getAcceptedSchoolFriends = (friends: Friend[], school: string) =>
-  getSchoolFriends(friends, school).filter((friend) => (friend.status ?? "accepted") === "accepted");
+  getSchoolFriends(friends, school).filter(isAcceptedFriend);
 
 const getDefaultCommunityId = (
   communities: Community[],
@@ -323,7 +336,96 @@ const semesterKey = (course: Course) => `${course.year ?? "2025-2026"} · ${cour
 
 const scheduleSemesterKey = (item: ScheduleItem) => `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
 
+const getItemSemesterKey = (item: ScheduleItem) => item.semesterKey ?? scheduleSemesterKey(item);
+
 const defaultSemester = "2025-2026 · Намрын улирал";
+
+const studentSemesterKey = (studentId: string, semester: string) => `${studentId}:${semester}`;
+
+const withScheduleIdentity = (items: ScheduleItem[], studentId: string, semester: string) =>
+  items.map((item) => ({
+    ...item,
+    studentId,
+    semesterKey: getItemSemesterKey(item) || semester
+  }));
+
+const replaceSemesterSchedule = (schedule: ScheduleItem[], semester: string, items: ScheduleItem[]) => [
+  ...schedule.filter((item) => getItemSemesterKey(item) !== semester),
+  ...items
+];
+
+const createInitialStudentSchedules = () => {
+  const schedules: Record<string, Record<string, ScheduleItem[]>> = {
+    [detectedCurrentStudent.id]: {
+      [defaultSemester]: withScheduleIdentity(seedSchedule, detectedCurrentStudent.id, defaultSemester)
+    }
+  };
+
+  seedFriends.forEach((friend) => {
+    const studentId = friend.studentId ?? friend.id;
+    schedules[studentId] = {
+      [defaultSemester]: withScheduleIdentity(friend.schedule, studentId, defaultSemester)
+    };
+  });
+
+  return schedules;
+};
+
+const mergeStudentSemesterSchedule = (
+  studentSchedules: Record<string, Record<string, ScheduleItem[]>>,
+  studentId: string,
+  semester: string,
+  items: ScheduleItem[]
+) => ({
+  ...studentSchedules,
+  [studentId]: {
+    ...(studentSchedules[studentId] ?? {}),
+    [semester]: withScheduleIdentity(items, studentId, semester)
+  }
+});
+
+const getCachedStudentSchedule = (
+  studentSchedules: Record<string, Record<string, ScheduleItem[]>>,
+  studentId: string,
+  semester: string
+) => studentSchedules[studentId]?.[semester] ?? [];
+
+const mergeStudentSchedulesFromFlatSchedule = (
+  studentSchedules: Record<string, Record<string, ScheduleItem[]>>,
+  studentId: string,
+  schedule: ScheduleItem[]
+) =>
+  unique(schedule.map(getItemSemesterKey)).reduce(
+    (nextSchedules, semester) =>
+      mergeStudentSemesterSchedule(
+        nextSchedules,
+        studentId,
+        semester,
+        schedule.filter((item) => getItemSemesterKey(item) === semester)
+      ),
+    studentSchedules
+  );
+
+const mergeFriendSchedules = (
+  apiFriends: Friend[],
+  previousFriends: Friend[],
+  studentSchedules: Record<string, Record<string, ScheduleItem[]>>
+) =>
+  apiFriends.map((friend) => {
+    const studentId = friend.studentId ?? friend.id;
+    const previous = previousFriends.find(
+      (item) => item.id === friend.id || item.studentId === friend.studentId || item.email.toLowerCase() === friend.email.toLowerCase()
+    );
+    const cached = Object.values(studentSchedules[studentId] ?? {}).flat();
+
+    return {
+      ...friend,
+      schedule: cached.length > 0 ? cached : previous?.schedule ?? [],
+      school: friend.school ?? CommunityService.detectSchoolFromEmail(friend.email),
+      classGroup: friend.classGroup ?? friend.group,
+      major: friend.major ?? previous?.major
+    };
+  });
 
 const getSemesterOptions = (courses: Course[]) =>
   Array.from(new Set(courses.map(semesterKey))).sort((first, second) => second.localeCompare(first));
@@ -455,6 +557,9 @@ const createFriendFromStudent = (student: Student, schedule: ScheduleItem[] = []
   name: student.name,
   email: student.email,
   group: student.class_group,
+  school: student.school,
+  major: student.program,
+  classGroup: student.class_group,
   accent: "#14b8a6",
   schedule
 });
@@ -521,8 +626,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   currentStudent: detectedCurrentStudent,
   students: initialStudents,
   courses: seedCourses,
-  currentUserSchedule: seedSchedule,
-  friends: seedFriends,
+  currentUserSchedule: withScheduleIdentity(seedSchedule, detectedCurrentStudent.id, defaultSemester),
+  studentSchedules: createInitialStudentSchedules(),
+  scheduleUpdatedAt: {},
+  friends: seedFriends.map((friend) => ({
+    ...friend,
+    school: CommunityService.detectSchoolFromEmail(friend.email),
+    major: seedStudents.find((student) => student.id === friend.studentId)?.program,
+    classGroup: seedStudents.find((student) => student.id === friend.studentId)?.class_group ?? friend.group,
+    schedule: withScheduleIdentity(friend.schedule, friend.studentId ?? friend.id, defaultSemester)
+  })),
   groups: seedGroups,
   schoolEvents: initialSchoolEvents,
   boardPosts: initialBoardPosts,
@@ -583,7 +696,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
                   student.id !== "student-current"
               )
             ];
-        const friends = apiFriends ?? state.friends;
+        const studentSchedules = state.studentSchedules[nextStudent.id]
+          ? state.studentSchedules
+          : mergeStudentSemesterSchedule(state.studentSchedules, nextStudent.id, state.selectedSemester, []);
+        const friends = apiFriends
+          ? mergeFriendSchedules(apiFriends, state.friends, studentSchedules)
+          : state.friends;
+        const currentUserSchedule = Object.values(studentSchedules[nextStudent.id] ?? {}).flat();
       const assignment = rebuildCommunityState(students, state.courses);
         const visibleFriends = getAcceptedSchoolFriends(friends, nextStudent.school);
 
@@ -591,6 +710,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         userEmail: normalizedEmail,
         currentStudent: nextStudent,
         students,
+        currentUserSchedule,
+        studentSchedules,
           friends,
         communities: assignment.communities,
         communityMembers: assignment.members,
@@ -641,6 +762,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const apiFriends = await ApiService.fetchFriends(normalizedEmail).catch(() => undefined);
 
       applyStudentSession(nextStudent, apiSemesterOptions, apiFriends);
+      void get().loadStudentSchedule(nextStudent.id, get().selectedSemester);
+      void get().loadAcceptedFriendSchedules(get().selectedSemester);
     } catch (error) {
       if (error instanceof ApiRequestError && error.status < 500) {
         set({
@@ -690,7 +813,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const canAccessFriend = Boolean(
         friend &&
           friendBelongsToSchool(friend, state.currentStudent.school) &&
-          (friend.status ?? "accepted") === "accepted"
+          isAcceptedFriend(friend)
       );
 
       return {
@@ -755,8 +878,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }
 
     set((state) => {
+      const studentSchedules =
+        snapshot.studentSchedules ??
+        mergeStudentSemesterSchedule({}, snapshot.currentStudent.id, snapshot.selectedSemester, snapshot.currentUserSchedule);
+      const friends = mergeFriendSchedules(snapshot.friends, state.friends, studentSchedules);
+      const currentUserSchedule = Object.values(studentSchedules[snapshot.currentStudent.id] ?? {}).flat();
       const assignment = rebuildCommunityState(snapshot.students, state.courses);
-      const visibleFriends = getAcceptedSchoolFriends(snapshot.friends, snapshot.currentStudent.school);
+      const visibleFriends = getAcceptedSchoolFriends(friends, snapshot.currentStudent.school);
       const selectedFriendId =
         snapshot.selectedFriendId && visibleFriends.some((friend) => friend.id === snapshot.selectedFriendId)
           ? snapshot.selectedFriendId
@@ -765,6 +893,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       return {
         ...snapshot,
         userEmail: snapshot.currentStudent.email,
+        currentUserSchedule,
+        studentSchedules,
+        scheduleUpdatedAt: snapshot.scheduleUpdatedAt ?? state.scheduleUpdatedAt,
+        friends,
         activePage: normalizeActivePage(snapshot.activePage),
         selectedCourseId: snapshot.selectedCourseId ?? null,
         isOnboarded: snapshot.isOnboarded ?? false,
@@ -804,17 +936,88 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     const state = get();
 
     try {
-      const friends = await ApiService.fetchFriends(state.currentStudent.email);
+      const apiFriends = await ApiService.fetchFriends(state.currentStudent.email);
       set((currentState) => ({
-        friends,
+        friends: mergeFriendSchedules(apiFriends, currentState.friends, currentState.studentSchedules),
         selectedFriendId:
-          currentState.selectedFriendId && friends.some((friend) => friend.id === currentState.selectedFriendId)
+          currentState.selectedFriendId &&
+          apiFriends.some((friend) => friend.id === currentState.selectedFriendId && isAcceptedFriend(friend))
             ? currentState.selectedFriendId
-            : friends.find((friend) => friend.status === "accepted")?.id ?? null
+            : apiFriends.find(isAcceptedFriend)?.id ?? null
       }));
     } catch {
       // Local friends remain visible when the API is unavailable.
     }
+  },
+  loadStudentSchedule: async (studentId, semester) => {
+    const state = get();
+    const isCurrentStudent = studentId === state.currentStudent.id;
+
+    try {
+      const apiSchedule = isCurrentStudent
+        ? await ApiService.fetchMySchedule(state.currentStudent.email, semester)
+        : await ApiService.fetchStudentSchedule(state.currentStudent.email, studentId, semester);
+      const schedule = withScheduleIdentity(apiSchedule, studentId, semester);
+
+      set((currentState) => {
+        const studentSchedules = mergeStudentSemesterSchedule(
+          currentState.studentSchedules,
+          studentId,
+          semester,
+          schedule
+        );
+        const scheduleUpdatedAt = {
+          ...currentState.scheduleUpdatedAt,
+          [studentSemesterKey(studentId, semester)]: new Date().toISOString()
+        };
+
+        return {
+          studentSchedules,
+          scheduleUpdatedAt,
+          currentUserSchedule: isCurrentStudent
+            ? replaceSemesterSchedule(currentState.currentUserSchedule, semester, schedule)
+            : currentState.currentUserSchedule,
+          friends: currentState.friends.map((friend) => {
+            const friendStudentId = friend.studentId ?? friend.id;
+            if (friendStudentId !== studentId) return friend;
+
+            return {
+              ...friend,
+              schedule: replaceSemesterSchedule(friend.schedule, semester, schedule)
+            };
+          })
+        };
+      });
+
+      return schedule;
+    } catch {
+      const snapshot = get();
+      const cached = getCachedStudentSchedule(snapshot.studentSchedules, studentId, semester);
+      if (cached.length > 0) return cached;
+
+      const friend = snapshot.friends.find((item) => (item.studentId ?? item.id) === studentId);
+      const fallback = friend?.schedule.filter((item) => getItemSemesterKey(item) === semester) ?? [];
+
+      return isCurrentStudent
+        ? snapshot.currentUserSchedule.filter((item) => getItemSemesterKey(item) === semester)
+        : fallback;
+    }
+  },
+  getFriendSchedule: async (friendId, semester) => {
+    const friend = get().friends.find((item) => item.id === friendId || item.studentId === friendId);
+    if (!friend || !isAcceptedFriend(friend)) return [];
+
+    return get().loadStudentSchedule(friend.studentId ?? friend.id, semester);
+  },
+  loadAcceptedFriendSchedules: async (semester) => {
+    const state = get();
+    const acceptedFriends = getAcceptedSchoolFriends(state.friends, state.currentStudent.school);
+
+    await Promise.all(
+      acceptedFriends.map((friend) =>
+        get().getFriendSchedule(friend.id, semester).catch(() => [])
+      )
+    );
   },
   addFriendByEmail: (email) => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -855,7 +1058,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         isOnline: false
       });
     const knownFriend = state.friends.find((friend) => friend.studentId === student.id);
-    const newFriend = knownFriend ?? createFriendFromStudent(student);
+    const newFriend = knownFriend ?? {
+      ...createFriendFromStudent(student),
+      status: "pending" as const,
+      direction: "outgoing" as const,
+      school,
+      major: student.program,
+      classGroup: student.class_group
+    };
     const nextStudents = existingStudent ? state.students : [...state.students, student];
     const nextFriends = [...state.friends, newFriend];
     const assignment = rebuildCommunityState(nextStudents, state.courses);
@@ -872,7 +1082,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     void ApiService.requestFriend(state.currentStudent.email, normalizedEmail)
       .then(async () => {
         const friends = await ApiService.fetchFriends(state.currentStudent.email).catch(() => get().friends);
-        set({ friends, friendNotice: "Найзын хүсэлт серверт илгээгдлээ." });
+        set((currentState) => ({
+          friends: mergeFriendSchedules(friends, currentState.friends, currentState.studentSchedules),
+          friendNotice: "Найзын хүсэлт серверт илгээгдлээ."
+        }));
       })
       .catch(() => {
         // Local friend fallback stays available while backend accounts are still being created.
@@ -884,7 +1097,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     void ApiService.acceptFriend(state.currentStudent.email, friendshipId)
       .then(async () => {
         const friends = await ApiService.fetchFriends(state.currentStudent.email).catch(() => get().friends);
-        set({ friends, friendNotice: "Найзын хүсэлтийг зөвшөөрлөө." });
+        set((currentState) => ({
+          friends: mergeFriendSchedules(friends, currentState.friends, currentState.studentSchedules),
+          friendNotice: "Найзын хүсэлтийг зөвшөөрлөө."
+        }));
       })
       .catch((error) => {
         set({
@@ -907,6 +1123,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     const newItems = companionCourse
       ? [newItem, createScheduleItemFromCatalogCourse(companionCourse)]
       : [newItem];
+    const selectedTerm = semesterKey(course);
+    const identifiedNewItems = withScheduleIdentity(newItems, state.currentStudent.id, selectedTerm);
     const enrollmentCourseId = getEnrollmentCourseId(course);
     const nextCurrentStudent = {
       ...state.currentStudent,
@@ -917,8 +1135,19 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     );
     const assignment = rebuildCommunityState(nextStudents, state.courses);
 
+    const nextCurrentUserSchedule = [...state.currentUserSchedule, ...identifiedNewItems];
+
     set({
-      currentUserSchedule: [...state.currentUserSchedule, ...newItems],
+      currentUserSchedule: nextCurrentUserSchedule,
+      studentSchedules: mergeStudentSchedulesFromFlatSchedule(
+        state.studentSchedules,
+        state.currentStudent.id,
+        nextCurrentUserSchedule
+      ),
+      scheduleUpdatedAt: {
+        ...state.scheduleUpdatedAt,
+        [studentSemesterKey(state.currentStudent.id, selectedTerm)]: new Date().toISOString()
+      },
       currentStudent: nextCurrentStudent,
       students: nextStudents,
       communities: assignment.communities,
@@ -929,13 +1158,18 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           : "Хичээл хуваарьт нэмэгдлээ."
     });
 
-    void ApiService.enroll(state.currentStudent.email, course.sourceScheduleId ?? course.id, true).catch(() => {
-      // The UI keeps the local plan if the shared database is offline.
-    });
+    void ApiService.enroll(state.currentStudent.email, course.sourceScheduleId ?? course.id, true)
+      .then(() => get().loadStudentSchedule(state.currentStudent.id, selectedTerm))
+      .catch(() => {
+        // The UI keeps the local plan if the shared database is offline.
+      });
   },
   removeScheduleItem: (itemId) =>
     set((state) => {
+      const removedItem = state.currentUserSchedule.find((item) => item.id === itemId);
+      const removedSemester = removedItem ? getItemSemesterKey(removedItem) : state.selectedSemester;
       const nextSchedule = state.currentUserSchedule.filter((item) => item.id !== itemId);
+      const nextSemesterSchedule = nextSchedule.filter((item) => getItemSemesterKey(item) === removedSemester);
       const nextCourseIds = unique(nextSchedule.map((item) => item.communityCourseId ?? item.courseId));
       const nextCurrentStudent = {
         ...state.currentStudent,
@@ -948,6 +1182,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
       return {
         currentUserSchedule: nextSchedule,
+        studentSchedules: mergeStudentSemesterSchedule(
+          state.studentSchedules,
+          state.currentStudent.id,
+          removedSemester,
+          nextSemesterSchedule
+        ),
+        scheduleUpdatedAt: {
+          ...state.scheduleUpdatedAt,
+          [studentSemesterKey(state.currentStudent.id, removedSemester)]: new Date().toISOString()
+        },
         currentStudent: nextCurrentStudent,
         students: nextStudents,
         communities: assignment.communities,
@@ -966,6 +1210,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     if (nextSchedule.length === state.currentUserSchedule.length) return;
 
+    const removedSemester = course ? semesterKey(course) : state.selectedSemester;
+    const nextSemesterSchedule = nextSchedule.filter((item) => getItemSemesterKey(item) === removedSemester);
     const nextCourseIds = unique(nextSchedule.map((item) => item.communityCourseId ?? item.courseId));
     const nextCurrentStudent = {
       ...state.currentStudent,
@@ -978,6 +1224,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
     set({
       currentUserSchedule: nextSchedule,
+      studentSchedules: mergeStudentSemesterSchedule(
+        state.studentSchedules,
+        state.currentStudent.id,
+        removedSemester,
+        nextSemesterSchedule
+      ),
+      scheduleUpdatedAt: {
+        ...state.scheduleUpdatedAt,
+        [studentSemesterKey(state.currentStudent.id, removedSemester)]: new Date().toISOString()
+      },
       currentStudent: nextCurrentStudent,
       students: nextStudents,
       communities: assignment.communities,
@@ -999,25 +1255,43 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       return;
     }
 
-    const newItem = createScheduleItemFromCourse(course, day, startMinutes, duration);
+    const selectedTerm = semesterKey(course);
+    const newItem = withScheduleIdentity(
+      [createScheduleItemFromCourse(course, day, startMinutes, duration)],
+      get().currentStudent.id,
+      selectedTerm
+    )[0];
     const enrollmentCourseId = getEnrollmentCourseId(course);
 
-    set((state) => ({
-      currentUserSchedule: [...state.currentUserSchedule, newItem],
-      currentStudent: {
-        ...state.currentStudent,
-        enrolledCourseIds: unique([...state.currentStudent.enrolledCourseIds, enrollmentCourseId])
-      },
-      students: state.students.map((student) =>
-        student.id === state.currentStudent.id
-          ? {
-              ...student,
-              enrolledCourseIds: unique([...student.enrolledCourseIds, enrollmentCourseId])
-            }
-          : student
-      ),
-      scheduleNotice: "Хичээл хуваарьт нэмэгдлээ."
-    }));
+    set((state) => {
+      const nextCurrentUserSchedule = [...state.currentUserSchedule, newItem];
+
+      return {
+        currentUserSchedule: nextCurrentUserSchedule,
+        studentSchedules: mergeStudentSchedulesFromFlatSchedule(
+          state.studentSchedules,
+          state.currentStudent.id,
+          nextCurrentUserSchedule
+        ),
+        scheduleUpdatedAt: {
+          ...state.scheduleUpdatedAt,
+          [studentSemesterKey(state.currentStudent.id, selectedTerm)]: new Date().toISOString()
+        },
+        currentStudent: {
+          ...state.currentStudent,
+          enrolledCourseIds: unique([...state.currentStudent.enrolledCourseIds, enrollmentCourseId])
+        },
+        students: state.students.map((student) =>
+          student.id === state.currentStudent.id
+            ? {
+                ...student,
+                enrolledCourseIds: unique([...student.enrolledCourseIds, enrollmentCourseId])
+              }
+            : student
+        ),
+        scheduleNotice: "Хичээл хуваарьт нэмэгдлээ."
+      };
+    });
 
     set((state) => {
       const assignment = rebuildCommunityState(state.students, state.courses);
@@ -1029,8 +1303,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     });
   },
   moveScheduleItem: (itemId, day, startMinutes) =>
-    set((state) => ({
-      currentUserSchedule: state.currentUserSchedule.map((item) => {
+    set((state) => {
+      const affectedItem = state.currentUserSchedule.find((item) => item.id === itemId);
+      const affectedSemester = affectedItem ? getItemSemesterKey(affectedItem) : state.selectedSemester;
+      const nextSchedule = state.currentUserSchedule.map((item) => {
         if (item.id !== itemId) return item;
 
         const duration = item.endMinutes - item.startMinutes;
@@ -1043,11 +1319,28 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           startMinutes: boundedStart,
           endMinutes: boundedStart + duration
         };
-      })
-    })),
+      });
+      const nextSemesterSchedule = nextSchedule.filter((item) => getItemSemesterKey(item) === affectedSemester);
+
+      return {
+        currentUserSchedule: nextSchedule,
+        studentSchedules: mergeStudentSemesterSchedule(
+          state.studentSchedules,
+          state.currentStudent.id,
+          affectedSemester,
+          nextSemesterSchedule
+        ),
+        scheduleUpdatedAt: {
+          ...state.scheduleUpdatedAt,
+          [studentSemesterKey(state.currentStudent.id, affectedSemester)]: new Date().toISOString()
+        }
+      };
+    }),
   resizeScheduleItem: (itemId, endMinutes) =>
-    set((state) => ({
-      currentUserSchedule: state.currentUserSchedule.map((item) => {
+    set((state) => {
+      const affectedItem = state.currentUserSchedule.find((item) => item.id === itemId);
+      const affectedSemester = affectedItem ? getItemSemesterKey(affectedItem) : state.selectedSemester;
+      const nextSchedule = state.currentUserSchedule.map((item) => {
         if (item.id !== itemId) return item;
 
         const snappedEnd = snapToSlot(endMinutes);
@@ -1057,8 +1350,23 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           ...item,
           endMinutes: clamp(snappedEnd, minimumEnd, DAY_END_MINUTES)
         };
-      })
-    })),
+      });
+      const nextSemesterSchedule = nextSchedule.filter((item) => getItemSemesterKey(item) === affectedSemester);
+
+      return {
+        currentUserSchedule: nextSchedule,
+        studentSchedules: mergeStudentSemesterSchedule(
+          state.studentSchedules,
+          state.currentStudent.id,
+          affectedSemester,
+          nextSemesterSchedule
+        ),
+        scheduleUpdatedAt: {
+          ...state.scheduleUpdatedAt,
+          [studentSemesterKey(state.currentStudent.id, affectedSemester)]: new Date().toISOString()
+        }
+      };
+    }),
   sendCommunityMessage: (body) => {
     const trimmedBody = body.trim();
     if (!trimmedBody) return;
@@ -1250,7 +1558,7 @@ export const useSelectedFriend = () =>
   useScheduleStore((state) => {
     const friend = state.friends.find((item) => item.id === state.selectedFriendId);
 
-    return friend && friendBelongsToSchool(friend, state.currentStudent.school) ? friend : null;
+    return friend && friendBelongsToSchool(friend, state.currentStudent.school) && isAcceptedFriend(friend) ? friend : null;
   });
 
 export const useSelectedCommunity = () =>
@@ -1271,6 +1579,8 @@ export const createDatabaseSnapshot = (state: ScheduleState): AppDatabaseSnapsho
   currentStudent: state.currentStudent,
   students: state.students,
   currentUserSchedule: state.currentUserSchedule,
+  studentSchedules: state.studentSchedules,
+  scheduleUpdatedAt: state.scheduleUpdatedAt,
   friends: state.friends,
   selectedFriendId: state.selectedFriendId,
   selectedCommunityId: state.selectedCommunityId,

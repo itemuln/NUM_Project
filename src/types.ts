@@ -86,14 +86,18 @@ export interface CommunityMember {
 
 export interface ScheduleItem {
   id: string;
+  studentId?: string;
   courseId: string;
+  scheduleId?: string;
   sourceScheduleId?: string;
   communityCourseId?: string;
+  semesterKey?: string;
   year?: string;
   semester?: string;
   courseName: string;
   teacher: string;
   room: string;
+  building?: string;
   day: DayKey;
   startMinutes: number;
   endMinutes: number;
@@ -109,6 +113,9 @@ export interface Friend {
   name: string;
   email: string;
   group: string;
+  school?: string;
+  major?: string;
+  classGroup?: string;
   accent: string;
   schedule: ScheduleItem[];
 }
@@ -211,6 +218,8 @@ export interface AppDatabaseSnapshot {
   currentStudent: Student;
   students: Student[];
   currentUserSchedule: ScheduleItem[];
+  studentSchedules?: Record<string, Record<string, ScheduleItem[]>>;
+  scheduleUpdatedAt?: Record<string, string>;
   friends: Friend[];
   selectedFriendId: string | null;
   selectedCommunityId: string | null;

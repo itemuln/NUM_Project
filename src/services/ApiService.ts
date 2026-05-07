@@ -1,4 +1,5 @@
-import type { Course, CourseKind, CourseReview, DayKey, Friend } from "@/types";
+import { CommunityService } from "@/services/CommunityService";
+import type { Course, CourseKind, CourseReview, DayKey, Friend, ScheduleItem } from "@/types";
 
 interface ApiLoginInput {
   email: string;
@@ -78,6 +79,27 @@ interface ApiCourse {
   schedules: ApiSchedule[];
 }
 
+interface ApiEnrollment {
+  id: string;
+  timetableId: string;
+  termId: string;
+  termLabel: string;
+  courseId: string;
+  scheduleId: string;
+  courseName: string;
+  teacherName: string;
+  code: string;
+  credit: number;
+  day: string;
+  startTime: string;
+  endTime: string;
+  type: CourseKind;
+  room: string;
+  building: string;
+  semester: string;
+  year: string;
+}
+
 const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
 export class ApiRequestError extends Error {
@@ -117,6 +139,25 @@ function mapScheduleType(value: string): CourseKind {
   if (value === "lab") return "lab";
   if (value === "seminar") return "seminar";
   return "lecture";
+}
+
+function semesterKeyFromParts(year?: string, semester?: string) {
+  return `${year ?? "2025-2026"} · ${semester ?? "Намрын улирал"}`;
+}
+
+function parseSemesterKey(value: string) {
+  const [yearPart, semesterPart] = value.split("·").map((part) => part.trim());
+
+  return {
+    year: yearPart || "2025-2026",
+    semester: semesterPart || "Намрын улирал"
+  };
+}
+
+function scheduleQuery(semesterKey: string) {
+  const params = new URLSearchParams(parseSemesterKey(semesterKey));
+
+  return params.toString();
 }
 
 function mapCourses(courses: ApiCourse[], ratings: ApiTeacherRating[]): Course[] {
@@ -173,8 +214,33 @@ function mapFriendship(friendship: ApiFriendship, currentStudentEmail: string): 
     name: otherStudent.name,
     email: otherStudent.email,
     group: otherStudent.classGroup,
+    school: CommunityService.detectSchoolFromEmail(otherStudent.email),
+    major: otherStudent.major,
+    classGroup: otherStudent.classGroup,
     accent: "#14b8a6",
     schedule: []
+  };
+}
+
+function mapEnrollment(enrollment: ApiEnrollment, studentId?: string): ScheduleItem {
+  return {
+    id: enrollment.id,
+    studentId,
+    courseId: enrollment.scheduleId,
+    scheduleId: enrollment.scheduleId,
+    sourceScheduleId: enrollment.scheduleId,
+    communityCourseId: enrollment.courseId,
+    semesterKey: enrollment.termLabel || semesterKeyFromParts(enrollment.year, enrollment.semester),
+    year: enrollment.year,
+    semester: enrollment.semester,
+    courseName: enrollment.courseName,
+    teacher: enrollment.teacherName,
+    room: enrollment.room,
+    building: enrollment.building,
+    day: enrollment.day as DayKey,
+    startMinutes: parseTime(enrollment.startTime),
+    endMinutes: parseTime(enrollment.endTime),
+    kind: mapScheduleType(enrollment.type)
   };
 }
 
@@ -204,7 +270,7 @@ export const ApiService = {
   },
 
   enroll(studentEmail: string, scheduleId: string, force = false) {
-    return apiFetch("/enroll", {
+    return apiFetch<{ enrollments: ApiEnrollment[] }>("/enroll", {
       method: "POST",
       headers: headers(studentEmail),
       body: JSON.stringify({ scheduleId, force })
@@ -232,6 +298,25 @@ export const ApiService = {
     });
 
     return response.friendships.map((friendship) => mapFriendship(friendship, studentEmail));
+  },
+
+  async fetchMySchedule(studentEmail: string, semesterKey: string) {
+    const response = await apiFetch<{ schedule: ApiEnrollment[] }>(`/schedule/me?${scheduleQuery(semesterKey)}`, {
+      headers: headers(studentEmail)
+    });
+
+    return response.schedule.map((enrollment) => mapEnrollment(enrollment));
+  },
+
+  async fetchStudentSchedule(studentEmail: string, studentId: string, semesterKey: string) {
+    const response = await apiFetch<{ schedule: ApiEnrollment[] }>(
+      `/schedule/${encodeURIComponent(studentId)}?${scheduleQuery(semesterKey)}`,
+      {
+        headers: headers(studentEmail)
+      }
+    );
+
+    return response.schedule.map((enrollment) => mapEnrollment(enrollment, studentId));
   },
 
   async acceptFriend(studentEmail: string, friendshipId: string) {

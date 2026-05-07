@@ -1,4 +1,4 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useEffect, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { CalendarDays, Circle, MessageCircle, X } from "lucide-react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,10 @@ const communityTypeLabels = {
 
 function dayLabel(dayKey: ScheduleItem["day"]) {
   return days.find((day) => day.key === dayKey)?.shortLabel ?? dayKey;
+}
+
+function scheduleTermKey(item: ScheduleItem) {
+  return item.semesterKey ?? `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
 }
 
 function findSameClass(item: ScheduleItem, courses: Course[]) {
@@ -95,6 +99,19 @@ export function RightContextPanel() {
   const setRightContext = useScheduleStore((state) => state.setRightContext);
   const setComparisonMode = useScheduleStore((state) => state.setComparisonMode);
   const setActivePage = useScheduleStore((state) => state.setActivePage);
+  const selectedSemester = useScheduleStore((state) => state.selectedSemester);
+  const getFriendSchedule = useScheduleStore((state) => state.getFriendSchedule);
+
+  useEffect(() => {
+    if (rightContext !== "friend" || !selectedFriend?.id) return;
+
+    void getFriendSchedule(selectedFriend.id, selectedSemester);
+  }, [getFriendSchedule, rightContext, selectedFriend?.id, selectedSemester]);
+
+  const selectedFriendSemesterSchedule = useMemo(
+    () => selectedFriend?.schedule.filter((item) => scheduleTermKey(item) === selectedSemester) ?? [],
+    [selectedFriend, selectedSemester]
+  );
 
   if (!rightContext) return null;
 
@@ -176,7 +193,7 @@ export function RightContextPanel() {
               <CalendarDays className="h-4 w-4" />
               Найзын хуваарь
             </div>
-            {selectedFriend.schedule.map((item) => (
+            {selectedFriendSemesterSchedule.map((item) => (
               <div key={item.id} className="rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2">
                 <div className="text-sm font-semibold text-zinc-950">{item.courseName}</div>
                 <div className="mt-1 text-xs text-zinc-500">
@@ -206,6 +223,11 @@ export function RightContextPanel() {
                 })()}
               </div>
             ))}
+            {selectedFriendSemesterSchedule.length === 0 && (
+              <div className="rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-8 text-center text-sm text-zinc-500">
+                Энэ улиралд найзын хуваарь олдсонгүй.
+              </div>
+            )}
           </div>
         </ScrollArea>
       </ContextPanelShell>

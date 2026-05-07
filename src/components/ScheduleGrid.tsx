@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ScheduleBlock } from "@/components/ScheduleBlock";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,7 +32,7 @@ function itemToInterval(item: ScheduleItem): Interval {
 }
 
 function scheduleTermKey(item: ScheduleItem) {
-  return `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
+  return item.semesterKey ?? `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
 }
 
 function getConflictSegments(ownItems: ScheduleItem[], friendItems: ScheduleItem[]) {
@@ -221,8 +221,11 @@ function DayColumn({ day, ownItems, friendItems, comparisonMode }: DayColumnProp
 
 export function ScheduleGrid() {
   const ownSchedule = useScheduleStore((state) => state.currentUserSchedule);
+  const currentStudent = useScheduleStore((state) => state.currentStudent);
   const selectedSemester = useScheduleStore((state) => state.selectedSemester);
   const comparisonMode = useScheduleStore((state) => state.comparisonMode);
+  const loadStudentSchedule = useScheduleStore((state) => state.loadStudentSchedule);
+  const getFriendSchedule = useScheduleStore((state) => state.getFriendSchedule);
   const selectedFriend = useSelectedFriend();
   const visibleOwnSchedule = useMemo(
     () =>
@@ -242,9 +245,29 @@ export function ScheduleGrid() {
         : [],
     [comparisonMode, selectedFriend, selectedSemester]
   );
+  useEffect(() => {
+    if (!comparisonMode) return;
+
+    void loadStudentSchedule(currentStudent.id, selectedSemester);
+    if (selectedFriend?.id) {
+      void getFriendSchedule(selectedFriend.id, selectedSemester);
+    }
+  }, [comparisonMode, currentStudent.id, getFriendSchedule, loadStudentSchedule, selectedFriend?.id, selectedSemester]);
+
+  const emptyMessages = [
+    comparisonMode && visibleOwnSchedule.length === 0 ? "Энэ улиралд таны хуваарь олдсонгүй." : null,
+    comparisonMode && selectedFriend && friendSchedule.length === 0
+      ? "Энэ улиралд найзын хуваарь олдсонгүй."
+      : null
+  ].filter(Boolean);
 
   return (
     <section className="mx-auto flex h-full min-h-0 w-full max-w-[1540px] flex-col">
+      {emptyMessages.length > 0 && (
+        <div className="mb-2 shrink-0 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-500">
+          {emptyMessages.join(" ")}
+        </div>
+      )}
       <ScrollArea className="h-full min-h-0 border border-zinc-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
         <div className="min-w-[820px] sm:min-w-[920px] xl:min-w-[1180px]">
           <div className="sticky top-0 z-30 grid grid-cols-[52px_repeat(7,minmax(108px,1fr))] border-b border-zinc-200 bg-zinc-50 sm:grid-cols-[60px_repeat(7,minmax(122px,1fr))] xl:grid-cols-[72px_repeat(7,minmax(150px,1fr))]">

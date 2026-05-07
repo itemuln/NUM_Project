@@ -1,9 +1,23 @@
+import { useEffect, useMemo } from "react";
 import { CalendarDays, UserPlus } from "lucide-react";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Button } from "@/components/ui/button";
 import { useScheduleStore, useSelectedFriend } from "@/hooks/useSchedule";
 import { cn } from "@/lib/utils";
 import { CommunityService } from "@/services/CommunityService";
+import type { Friend, ScheduleItem } from "@/types";
+
+function normalizeStatus(status?: string | null) {
+  return status?.toLowerCase() ?? "accepted";
+}
+
+function scheduleTermKey(item: ScheduleItem) {
+  return item.semesterKey ?? `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
+}
+
+function hasScheduleForSemester(friend: Friend, semester: string) {
+  return friend.schedule.some((item) => scheduleTermKey(item) === semester);
+}
 
 export function Dashboard() {
   const selectedSemester = useScheduleStore((state) => state.selectedSemester);
@@ -17,12 +31,48 @@ export function Dashboard() {
   const setSelectedSemester = useScheduleStore((state) => state.setSelectedSemester);
   const openCourseModal = useScheduleStore((state) => state.openCourseModal);
   const setActivePage = useScheduleStore((state) => state.setActivePage);
+  const loadFriendsFromApi = useScheduleStore((state) => state.loadFriendsFromApi);
+  const loadStudentSchedule = useScheduleStore((state) => state.loadStudentSchedule);
+  const loadAcceptedFriendSchedules = useScheduleStore((state) => state.loadAcceptedFriendSchedules);
   const selectedFriend = useSelectedFriend();
-  const schoolFriends = friends.filter(
-    (friend) =>
-      CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school &&
-      (friend.status ?? "accepted") === "accepted"
+  const schoolFriends = useMemo(
+    () =>
+      friends.filter(
+        (friend) =>
+          CommunityService.detectSchoolFromEmail(friend.email) === currentStudent.school &&
+          normalizeStatus(friend.status) === "accepted"
+      ),
+    [currentStudent.school, friends]
   );
+  const schoolFriendIds = useMemo(() => schoolFriends.map((friend) => friend.id).join("|"), [schoolFriends]);
+
+  useEffect(() => {
+    void loadFriendsFromApi();
+  }, [loadFriendsFromApi, currentStudent.email]);
+
+  useEffect(() => {
+    if (!comparisonMode) return;
+
+    void loadStudentSchedule(currentStudent.id, selectedSemester);
+    void loadAcceptedFriendSchedules(selectedSemester);
+  }, [
+    comparisonMode,
+    currentStudent.id,
+    loadAcceptedFriendSchedules,
+    loadStudentSchedule,
+    selectedSemester,
+    schoolFriendIds
+  ]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !comparisonMode) return;
+
+    const friendSchedule = selectedFriend?.schedule.filter((item) => scheduleTermKey(item) === selectedSemester) ?? [];
+    console.log("Accepted friends:", schoolFriends);
+    console.log("Compare semester:", selectedSemester);
+    console.log("Selected friend:", selectedFriendId);
+    console.log("Friend schedule loaded:", friendSchedule);
+  }, [comparisonMode, schoolFriends, selectedFriend, selectedFriendId, selectedSemester]);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden sm:gap-4">
@@ -84,7 +134,8 @@ export function Dashboard() {
                 {schoolFriends.length === 0 && <option value="">Ижил сургуулийн найз алга</option>}
                 {schoolFriends.map((friend) => (
                   <option key={friend.id} value={friend.id}>
-                    {friend.name}
+                    {friend.name} · {friend.email} · {friend.major ?? friend.group} ·{" "}
+                    {hasScheduleForSemester(friend, selectedSemester) ? "Хуваарьтай" : "Хуваарь байхгүй"}
                   </option>
                 ))}
               </select>
@@ -100,7 +151,13 @@ export function Dashboard() {
 
         {comparisonMode && selectedFriend && (
           <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500">
-            {selectedFriend.name}-ийн хуваарийг давхар харуулж байна. Давхцал улаан, хамтын зав ногооноор тэмдэглэгдэнэ.
+            {selectedFriend.name} · {selectedFriend.email} · {selectedFriend.school ?? currentStudent.school} ·{" "}
+            {selectedFriend.major ?? selectedFriend.group} · {selectedFriend.classGroup ?? selectedFriend.group}
+            <span className="ml-2 text-zinc-400">
+              {hasScheduleForSemester(selectedFriend, selectedSemester)
+                ? "Давхцал улаан, хамтын зав ногооноор тэмдэглэгдэнэ."
+                : "Энэ улиралд хуваарь байхгүй."}
+            </span>
           </div>
         )}
         <div className="mt-3 rounded-md border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-700">
