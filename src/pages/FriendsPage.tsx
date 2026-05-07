@@ -60,14 +60,15 @@ export function FriendsPage() {
           />
           <Button type="submit">
             <UserPlus className="h-4 w-4" />
-            Нэмэх
+            Хүсэлт илгээх
           </Button>
         </form>
         {friendNotice && <div className="mt-2 text-sm text-zinc-500">{friendNotice}</div>}
         <div className="mt-3 text-xs leading-5 text-zinc-500">
           Дэмжих student email format: {emailSamples.join(" · ")}
           <br />
-          Одоо зөвхөн {currentStudent.school} сургуулийн оюутныг нэмнэ.
+          Одоо зөвхөн {currentStudent.school} сургуулийн оюутанд найзын хүсэлт илгээнэ. Хүлээн авсны дараа тухайн
+          улирлын share хийсэн хуваарийг харж, харьцуулна.
         </div>
       </section>
 

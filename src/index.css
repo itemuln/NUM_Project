@@ -86,6 +86,10 @@ body {
   color: #86efac !important;
 }
 
+[data-theme="dark"] .text-teal-700 {
+  color: #5eead4 !important;
+}
+
 [data-theme="dark"] .text-red-700 {
   color: #fca5a5 !important;
 }

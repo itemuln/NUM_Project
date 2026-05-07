@@ -1,4 +1,4 @@
-import { UserPlus } from "lucide-react";
+import { CalendarDays, UserPlus } from "lucide-react";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Button } from "@/components/ui/button";
 import { useScheduleStore, useSelectedFriend } from "@/hooks/useSchedule";
@@ -7,12 +7,14 @@ import { CommunityService } from "@/services/CommunityService";
 
 export function Dashboard() {
   const selectedSemester = useScheduleStore((state) => state.selectedSemester);
+  const semesterOptions = useScheduleStore((state) => state.semesterOptions);
   const comparisonMode = useScheduleStore((state) => state.comparisonMode);
   const friends = useScheduleStore((state) => state.friends);
   const currentStudent = useScheduleStore((state) => state.currentStudent);
   const selectedFriendId = useScheduleStore((state) => state.selectedFriendId);
   const setComparisonMode = useScheduleStore((state) => state.setComparisonMode);
   const setSelectedFriend = useScheduleStore((state) => state.setSelectedFriend);
+  const setSelectedSemester = useScheduleStore((state) => state.setSelectedSemester);
   const openCourseModal = useScheduleStore((state) => state.openCourseModal);
   const setActivePage = useScheduleStore((state) => state.setActivePage);
   const selectedFriend = useSelectedFriend();
@@ -25,11 +27,27 @@ export function Dashboard() {
       <header className="shrink-0 border border-zinc-200 bg-white px-3 py-3 sm:px-4 sm:py-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{selectedSemester}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Төлөвлөгөөний улирал</div>
             <h1 className="mt-1 text-lg font-semibold text-zinc-950 sm:text-xl">Миний долоо хоногийн хуваарь</h1>
           </div>
 
           <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <label className="flex h-10 w-full items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 sm:w-[240px]">
+              <CalendarDays className="h-4 w-4 shrink-0 text-zinc-400" />
+              <select
+                value={selectedSemester}
+                onChange={(event) => setSelectedSemester(event.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none"
+                aria-label="Улирал сонгох"
+              >
+                {semesterOptions.map((semester) => (
+                  <option key={semester} value={semester}>
+                    {semester}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="grid grid-cols-2 rounded-md border border-zinc-200 bg-zinc-50 p-1 sm:inline-grid">
               <button
                 type="button"
@@ -83,7 +101,7 @@ export function Dashboard() {
             {selectedFriend.name}-ийн хуваарийг давхар харуулж байна. Давхцал улаан, хамтын зав ногооноор тэмдэглэгдэнэ.
           </div>
         )}
-        <div className="mt-3 rounded-md border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-100">
+        <div className="mt-3 rounded-md border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-700">
           Энэ бол төлөвлөлтийн орчин. Энд гаргасан хуваариа найзуудтайгаа харьцуулаад, жинхэнэ хичээл сонголтоо
           сургуулийн албан систем дээр баталгаажуулна.
         </div>

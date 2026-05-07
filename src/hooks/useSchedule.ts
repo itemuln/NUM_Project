@@ -293,6 +293,11 @@ const defaultSemester = "2025-2026 · Намрын улирал";
 const getSemesterOptions = (courses: Course[]) =>
   Array.from(new Set(courses.map(semesterKey))).sort((first, second) => second.localeCompare(first));
 
+const normalizeSemesterOptions = (options: string[]) =>
+  options.map((option) => option.trim()).filter(Boolean);
+
+const mergeSemesterOptions = (...groups: string[][]) => unique(groups.flatMap(normalizeSemesterOptions));
+
 const getEnrollmentCourseId = (course: Course) => course.communityCourseId ?? course.id;
 
 const getScheduleEnrollmentCourseId = (item: ScheduleItem) => item.communityCourseId ?? item.courseId;
@@ -383,6 +388,8 @@ const createScheduleItemFromCourse = (
     courseId: course.id,
     sourceScheduleId: course.sourceScheduleId,
     communityCourseId: course.communityCourseId,
+    year: course.year,
+    semester: course.semester,
     courseName: course.name,
     teacher: course.teacher,
     room: course.room,
@@ -564,9 +571,25 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       classGroup: input.classGroup.trim() || "Тодорхойгүй",
       password: input.password,
       provider: input.provider ?? "password"
-    }).catch(() => {
-      // IndexedDB/local state remains the offline fallback when the API is not running.
-    });
+    })
+      .then((response) => {
+        const apiSemesterOptions = response.terms?.map((term) => term.label) ?? [];
+        if (apiSemesterOptions.length === 0) return;
+
+        set((state) => {
+          const semesterOptions = mergeSemesterOptions(getSemesterOptions(state.courses), apiSemesterOptions);
+
+          return {
+            semesterOptions,
+            selectedSemester: semesterOptions.includes(state.selectedSemester)
+              ? state.selectedSemester
+              : semesterOptions[0] ?? state.selectedSemester
+          };
+        });
+      })
+      .catch(() => {
+        // IndexedDB/local state remains the offline fallback when the API is not running.
+      });
   },
   logOut: () =>
     set({
@@ -611,6 +634,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     if (get().catalogLoaded) return;
 
     let importedCourses: Course[] | null = null;
+    let apiSemesterOptions: string[] = [];
 
     try {
       const apiCourses = await ApiService.fetchCourses(get().currentStudent.email);
@@ -619,6 +643,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       }
     } catch {
       importedCourses = null;
+    }
+
+    try {
+      apiSemesterOptions = (await ApiService.fetchTerms(get().currentStudent.email)).map((term) => term.label);
+    } catch {
+      apiSemesterOptions = [];
     }
 
     if (!importedCourses) {
@@ -632,7 +662,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
       return {
         courses,
-        semesterOptions: getSemesterOptions(courses),
+        semesterOptions: mergeSemesterOptions(getSemesterOptions(courses), apiSemesterOptions),
         communities: assignment.communities,
         communityMembers: assignment.members,
         catalogLoaded: true
@@ -680,7 +710,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         comparisonMode: selectedFriendId ? snapshot.comparisonMode : false,
         communities: assignment.communities,
         communityMembers: assignment.members,
-        semesterOptions: getSemesterOptions(state.courses),
+        semesterOptions: mergeSemesterOptions(
+          state.semesterOptions,
+          getSemesterOptions(state.courses),
+          snapshot.selectedSemester ? [snapshot.selectedSemester] : []
+        ),
         databaseReady: true
       };
     });
@@ -735,7 +769,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       selectedFriendId: newFriend.id,
       communities: assignment.communities,
       communityMembers: assignment.members,
-      friendNotice: "Найз амжилттай нэмэгдлээ."
+      friendNotice: "Найзын хүсэлтийг илгээж байна."
     });
 
     void ApiService.requestFriend(state.currentStudent.email, normalizedEmail)

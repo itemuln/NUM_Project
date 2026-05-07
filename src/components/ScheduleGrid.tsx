@@ -15,6 +15,7 @@ interface Interval {
 
 const totalMinutes = DAY_END_MINUTES - DAY_START_MINUTES;
 const gridHeight = durationToPixels(totalMinutes);
+const fallbackScheduleTerm = "2025-2026 · Намрын улирал";
 
 const hourMarkers = Array.from({ length: totalMinutes / 60 + 1 }, (_, index) => DAY_START_MINUTES + index * 60);
 const halfHourMarkers = Array.from({ length: totalMinutes / 30 + 1 }, (_, index) => DAY_START_MINUTES + index * 30);
@@ -28,6 +29,10 @@ function itemToInterval(item: ScheduleItem): Interval {
     start: item.startMinutes,
     end: item.endMinutes
   };
+}
+
+function scheduleTermKey(item: ScheduleItem) {
+  return `${item.year ?? "2025-2026"} · ${item.semester ?? "Намрын улирал"}`;
 }
 
 function getConflictSegments(ownItems: ScheduleItem[], friendItems: ScheduleItem[]) {
@@ -216,9 +221,27 @@ function DayColumn({ day, ownItems, friendItems, comparisonMode }: DayColumnProp
 
 export function ScheduleGrid() {
   const ownSchedule = useScheduleStore((state) => state.currentUserSchedule);
+  const selectedSemester = useScheduleStore((state) => state.selectedSemester);
   const comparisonMode = useScheduleStore((state) => state.comparisonMode);
   const selectedFriend = useSelectedFriend();
-  const friendSchedule = comparisonMode && selectedFriend ? selectedFriend.schedule : [];
+  const visibleOwnSchedule = useMemo(
+    () =>
+      ownSchedule.filter((item) => {
+        const itemTerm = item.year || item.semester ? scheduleTermKey(item) : fallbackScheduleTerm;
+        return itemTerm === selectedSemester;
+      }),
+    [ownSchedule, selectedSemester]
+  );
+  const friendSchedule = useMemo(
+    () =>
+      comparisonMode && selectedFriend
+        ? selectedFriend.schedule.filter((item) => {
+            const itemTerm = item.year || item.semester ? scheduleTermKey(item) : fallbackScheduleTerm;
+            return itemTerm === selectedSemester;
+          })
+        : [],
+    [comparisonMode, selectedFriend, selectedSemester]
+  );
 
   return (
     <section className="mx-auto flex h-full min-h-0 w-full max-w-[1540px] flex-col">
@@ -250,7 +273,7 @@ export function ScheduleGrid() {
             </div>
 
             {days.map((day) => {
-              const ownItems = ownSchedule.filter((item) => item.day === day.key);
+              const ownItems = visibleOwnSchedule.filter((item) => item.day === day.key);
               const friendItems = friendSchedule.filter((item) => item.day === day.key);
 
               return (

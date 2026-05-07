@@ -89,6 +89,8 @@ export interface ScheduleItem {
   courseId: string;
   sourceScheduleId?: string;
   communityCourseId?: string;
+  year?: string;
+  semester?: string;
   courseName: string;
   teacher: string;
   room: string;

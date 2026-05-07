@@ -9,6 +9,18 @@ interface ApiLoginInput {
   provider?: "password" | "google" | "microsoft";
 }
 
+interface ApiTerm {
+  id: string;
+  academicYear: string;
+  semester?: string;
+  season?: string;
+  label: string;
+}
+
+interface ApiLoginResponse {
+  terms?: ApiTerm[];
+}
+
 interface ApiTeacherRating {
   teacherName: string;
   rating: number;
@@ -102,11 +114,19 @@ function mapCourses(courses: ApiCourse[], ratings: ApiTeacherRating[]): Course[]
 
 export const ApiService = {
   login(input: ApiLoginInput) {
-    return apiFetch("/auth/login", {
+    return apiFetch<ApiLoginResponse>("/auth/login", {
       method: "POST",
       headers: headers(),
       body: JSON.stringify(input)
     });
+  },
+
+  async fetchTerms(studentEmail: string) {
+    const response = await apiFetch<{ terms: ApiTerm[] }>("/terms", {
+      headers: headers(studentEmail)
+    });
+
+    return response.terms;
   },
 
   async fetchCourses(studentEmail: string) {
