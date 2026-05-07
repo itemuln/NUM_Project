@@ -76,7 +76,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
       }}
       className={cn(
         "group absolute rounded-md border p-2 text-left transition-[box-shadow,opacity,border-color,transform,filter] duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110",
-        owner === "me" && "schedule-block-own z-20 text-white",
+        owner === "me" && "schedule-block-own z-20",
         owner === "me" && item.kind === "lecture" && "schedule-block-lecture",
         owner === "me" && item.kind === "seminar" && "schedule-block-seminar",
         owner === "me" && item.kind === "lab" && "schedule-block-lab",
@@ -94,7 +94,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
             <div
               className={cn(
                 "truncate text-[11px] font-semibold uppercase tracking-wide",
-                owner === "me" ? "text-white/72" : "text-rose-700"
+                owner === "me" ? "schedule-block-time" : "schedule-block-friend-time"
               )}
             >
               {formatMinutes(item.startMinutes)} - {formatMinutes(item.endMinutes)}
@@ -105,7 +105,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
             variant={item.kind}
             className={cn(
               "hidden shrink-0 border-white/20 text-[10px] lg:inline-flex",
-              owner === "friend" && "border-rose-200 bg-white/80 text-rose-700"
+              owner === "friend" && "schedule-block-friend-badge"
             )}
           >
             {kindLabels[item.kind]}
@@ -115,7 +115,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
         <div
           className={cn(
             "mt-1.5 min-w-0 space-y-1 text-[11px] leading-4",
-            owner === "me" ? "text-white/82" : "text-rose-800"
+            owner === "me" ? "schedule-block-meta" : "schedule-block-friend-meta"
           )}
         >
           <div className="flex min-w-0 items-center gap-1.5">
@@ -145,7 +145,7 @@ export function ScheduleBlock({ item, owner, conflict = false }: ScheduleBlockPr
 
       {canMove && (
         <button
-          className="absolute inset-x-2 bottom-1 flex h-3 cursor-ns-resize items-center justify-center rounded-md text-white/60 opacity-0 transition-all duration-200 hover:text-white group-hover:opacity-100"
+          className="schedule-block-resize absolute inset-x-2 bottom-1 flex h-3 cursor-ns-resize items-center justify-center rounded-md opacity-0 transition-all duration-200 group-hover:opacity-100"
           type="button"
           aria-label={`${item.courseName} хугацаа өөрчлөх`}
           onPointerDown={handleResizeStart}

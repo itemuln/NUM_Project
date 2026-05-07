@@ -129,22 +129,31 @@ body {
 }
 
 .schedule-block-own {
-  box-shadow: 0 8px 22px rgba(159, 18, 57, 0.18);
+  --schedule-text: #ffffff;
+  --schedule-muted: rgba(255, 255, 255, 0.72);
+  --schedule-soft: rgba(255, 255, 255, 0.82);
+  --schedule-handle: rgba(255, 255, 255, 0.62);
+  color: var(--schedule-text);
+  box-shadow: 0 8px 22px rgba(120, 53, 15, 0.16);
 }
 
 .schedule-block-lecture {
-  border-color: #be123c;
-  background: linear-gradient(135deg, #be123c 0%, #e11d48 100%);
+  --schedule-text: #451a03;
+  --schedule-muted: rgba(69, 26, 3, 0.68);
+  --schedule-soft: rgba(69, 26, 3, 0.82);
+  --schedule-handle: rgba(69, 26, 3, 0.5);
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fde68a 0%, #f59e0b 100%);
 }
 
 .schedule-block-seminar {
   border-color: #dc2626;
-  background: linear-gradient(135deg, #dc2626 0%, #f43f5e 100%);
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
 }
 
 .schedule-block-lab {
-  border-color: #ea580c;
-  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+  border-color: #f97316;
+  background: linear-gradient(135deg, #f97316 0%, #fb7185 100%);
 }
 
 .schedule-block-friend {
@@ -153,29 +162,74 @@ body {
   color: #881337;
 }
 
+.schedule-block-time {
+  color: var(--schedule-muted);
+}
+
+.schedule-block-meta {
+  color: var(--schedule-soft);
+}
+
+.schedule-block-resize {
+  color: var(--schedule-handle);
+}
+
+.schedule-block-resize:hover {
+  color: var(--schedule-text);
+}
+
+.schedule-block-friend-time {
+  color: #be123c;
+}
+
+.schedule-block-friend-meta {
+  color: #9f1239;
+}
+
+.schedule-block-friend-badge {
+  border-color: #fecdd3;
+  background-color: rgba(255, 255, 255, 0.84);
+  color: #be123c;
+}
+
 [data-theme="dark"] .schedule-block-own {
+  --schedule-text: #ffffff;
+  --schedule-muted: rgba(255, 255, 255, 0.68);
+  --schedule-soft: rgba(255, 255, 255, 0.78);
+  --schedule-handle: rgba(255, 255, 255, 0.6);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
 }
 
 [data-theme="dark"] .schedule-block-lecture {
-  border-color: #881337;
-  background: linear-gradient(135deg, #881337 0%, #be123c 100%);
+  border-color: #27272a;
+  background: #18181b;
 }
 
 [data-theme="dark"] .schedule-block-seminar {
-  border-color: #7f1d1d;
-  background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%);
+  border-color: #0f766e;
+  background: #0f766e;
 }
 
 [data-theme="dark"] .schedule-block-lab {
-  border-color: #9a3412;
-  background: linear-gradient(135deg, #9a3412 0%, #c2410c 100%);
+  border-color: #4338ca;
+  background: #4338ca;
 }
 
 [data-theme="dark"] .schedule-block-friend {
-  border-color: rgba(251, 113, 133, 0.55);
-  background-color: rgba(244, 63, 94, 0.14);
-  color: #fecdd3;
+  border-color: #818cf8;
+  background-color: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+}
+
+[data-theme="dark"] .schedule-block-friend-time,
+[data-theme="dark"] .schedule-block-friend-meta {
+  color: #c7d2fe;
+}
+
+[data-theme="dark"] .schedule-block-friend-badge {
+  border-color: #c7d2fe;
+  background-color: rgba(255, 255, 255, 0.82);
+  color: #4338ca;
 }
 
 button,
